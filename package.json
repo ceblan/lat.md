@@ -4,7 +4,7 @@
   "description": "Anchor source code to high-level concepts defined in markdown",
   "type": "module",
   "bin": {
-    "lat": "./dist/src/cli.js"
+    "lat": "./dist/src/cli/index.js"
   },
   "scripts": {
     "build": "tsc",
