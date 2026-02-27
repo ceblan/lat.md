@@ -1,4 +1,5 @@
 import { findLatticeDir, loadAllSections, findSections } from '../lattice.js';
+import { formatSectionPreview } from '../format.js';
 
 export async function locate(args: string[]): Promise<void> {
   if (args.length < 1) {
@@ -22,7 +23,8 @@ export async function locate(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  for (const m of matches) {
-    console.log(m.id);
+  for (let i = 0; i < matches.length; i++) {
+    if (i > 0) console.log('');
+    console.log(formatSectionPreview(matches[i], latticeDir));
   }
 }
