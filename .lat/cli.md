@@ -4,11 +4,17 @@ The `lat` command line tool. Entry point: `src/cli/index.ts`.
 
 ## locate
 
-Find sections by id (case-insensitive exact match). Outputs a [[cli#Section Preview]] for each match.
+Find sections by query. Results are returned in priority order:
+
+1. **Exact match** — full section path matches (case-insensitive). If the query contains `#` (a full path), only exact matches are returned.
+2. **Subsection match** — the query matches a trailing segment of a section id. e.g. `Frontmatter` matches `markdown#Frontmatter`.
+3. **Fuzzy match** — sections whose id or trailing segments are within edit distance (Levenshtein, max 40% of string length). e.g. `Frontmattar` matches `markdown#Frontmatter`.
+
+Outputs a [[cli#Section Preview]] for each match.
 
 Usage: `lat locate <query>`
 
-Implementation: `src/cli/locate.ts`
+Implementation: `src/cli/locate.ts`, matching logic in `findSections()` in `src/lattice.ts`
 
 ## refs
 

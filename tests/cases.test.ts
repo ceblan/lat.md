@@ -12,6 +12,9 @@ import {
 import { formatSectionPreview } from '../src/format.js';
 import { checkMd, checkCodeRefs } from '../src/cli/check.js';
 
+// eslint-disable-next-line no-control-regex
+const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
+
 const casesDir = join(import.meta.dirname, 'cases');
 
 function caseDir(name: string): string {
@@ -87,7 +90,7 @@ describe('basic-project', () => {
     const flat = flattenSections(sections);
     const running = flat.find((s) => s.id === 'dev-process#Testing#Running Tests')!;
 
-    const output = formatSectionPreview(running, lat);
+    const output = stripAnsi(formatSectionPreview(running, lat));
     const lines = output.split('\n');
     expect(lines[0]).toBe('  dev-process#Testing#Running Tests');
     expect(lines[1]).toContain('dev-process.md:5-8');
@@ -100,7 +103,7 @@ describe('basic-project', () => {
     const flat = flattenSections(sections);
     const testing = flat.find((s) => s.id === 'dev-process#Testing')!;
 
-    const output = formatSectionPreview(testing, lat);
+    const output = stripAnsi(formatSectionPreview(testing, lat));
     const lines = output.split('\n');
     expect(lines[0]).toBe('  dev-process#Testing');
     expect(lines[1]).toContain('dev-process.md:3-4');
@@ -113,6 +116,22 @@ describe('basic-project', () => {
     const matches = findSections(sections, 'dev-process#Testing#Running Tests');
     expect(matches).toHaveLength(1);
     expect(matches[0].file).toBe('dev-process');
+  });
+
+  // @lat: [[tests#Locate#Matches subsection by trailing segment]]
+  it('locate matches subsection by trailing segment name', async () => {
+    const sections = await loadAllSections(lat);
+    const matches = findSections(sections, 'Running Tests');
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0].id).toBe('dev-process#Testing#Running Tests');
+  });
+
+  // @lat: [[tests#Locate#Fuzzy matches with typos]]
+  it('locate fuzzy matches with typos', async () => {
+    const sections = await loadAllSections(lat);
+    const matches = findSections(sections, 'Runing Tests');
+    expect(matches.length).toBeGreaterThanOrEqual(1);
+    expect(matches[0].id).toBe('dev-process#Testing#Running Tests');
   });
 
   it('locate returns empty for non-matching query', async () => {

@@ -175,10 +175,82 @@ export function flattenSections(sections: Section[]): Section[] {
   return result;
 }
 
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array(n + 1).fill(0),
+  );
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        a[i - 1] === b[j - 1]
+          ? dp[i - 1][j - 1]
+          : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/**
+ * Returns the trailing segment(s) of a section id.
+ * e.g. "markdown#Frontmatter#require-code-mention" → ["Frontmatter#require-code-mention", "require-code-mention"]
+ * The full id itself is not included (handled by exact match).
+ */
+function tailSegments(id: string): string[] {
+  const parts = id.split('#');
+  const tails: string[] = [];
+  for (let i = 1; i < parts.length; i++) {
+    tails.push(parts.slice(i).join('#'));
+  }
+  return tails;
+}
+
+const MAX_DISTANCE_RATIO = 0.4;
+
 export function findSections(sections: Section[], query: string): Section[] {
   const flat = flattenSections(sections);
   const q = query.toLowerCase();
-  return flat.filter((s) => s.id.toLowerCase() === q);
+  const isFullPath = query.includes('#');
+
+  // Tier 1: exact full-id match
+  const exact = flat.filter((s) => s.id.toLowerCase() === q);
+  if (exact.length > 0 && isFullPath) return exact;
+
+  // Tier 2: exact match on trailing segments (subsection name match)
+  const subsection = isFullPath
+    ? []
+    : flat.filter((s) =>
+        tailSegments(s.id).some((tail) => tail.toLowerCase() === q),
+      );
+
+  // Tier 3: fuzzy match by edit distance on each segment tail and full id
+  const seen = new Set([
+    ...exact.map((s) => s.id),
+    ...subsection.map((s) => s.id),
+  ]);
+  const fuzzy: { section: Section; distance: number }[] = [];
+
+  for (const s of flat) {
+    if (seen.has(s.id)) continue;
+    const candidates = [s.id, ...tailSegments(s.id)];
+    let best = Infinity;
+    for (const c of candidates) {
+      const d = levenshtein(c.toLowerCase(), q);
+      const maxLen = Math.max(c.length, q.length);
+      if (d / maxLen <= MAX_DISTANCE_RATIO && d < best) {
+        best = d;
+      }
+    }
+    if (best < Infinity) {
+      fuzzy.push({ section: s, distance: best });
+    }
+  }
+  fuzzy.sort((a, b) => a.distance - b.distance);
+
+  return [...exact, ...subsection, ...fuzzy.map((f) => f.section)];
 }
 
 export function extractRefs(filePath: string, content: string): Ref[] {
