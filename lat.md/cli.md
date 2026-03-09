@@ -64,6 +64,16 @@ Output replaces `[[ref]]` with `[[resolved-id]]` inline and appends a `<lat-cont
 
 Implementation: `src/cli/prompt.ts`
 
+## init
+
+Initialize a `lat.md/` directory in the target directory (default: cwd). If one already exists, does nothing.
+
+Creates scaffolding from `templates/init/`: a `.gitignore` (ignoring `.obsidian`) and a `README.md` linking to the npm package.
+
+Usage: `lat init [dir]`
+
+Implementation: `src/cli/init.ts`
+
 ## Section Preview
 
 Shared output format used by [[cli#locate]] and [[cli#refs]]. Shows the section id, file path with line range, and the first paragraph of body text.

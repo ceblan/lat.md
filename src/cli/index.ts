@@ -105,4 +105,13 @@ program
     await promptCmd(ctx, text);
   });
 
+program
+  .command('init')
+  .description('Initialize a lat.md directory')
+  .argument('[dir]', 'target directory (default: cwd)')
+  .action(async (dir?: string) => {
+    const { initCmd } = await import('./init.js');
+    await initCmd(dir);
+  });
+
 await program.parseAsync();
