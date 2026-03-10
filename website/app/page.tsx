@@ -131,6 +131,7 @@ export default function Home() {
         <span style={{ color: '#444' }}>Made by</span>
         <a className="foot" href="https://x.com/1st1">@1st1</a>
         <span style={{ color: '#333' }}>|</span>
+        <span style={{ color: '#444' }}>open source on</span>
         <a className="foot" href="https://github.com/1st1/lat.md">GitHub</a>
         <span style={{ color: '#333' }}>|</span>
         <a className="foot" href="https://www.npmjs.com/package/lat.md">npm</a>
