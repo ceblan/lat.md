@@ -28,6 +28,8 @@ npm install -g lat.md
 
 Or use directly with `npx lat.md@latest <command>`.
 
+For semantic search (`lat search`), set the `LAT_LLM_KEY` environment variable with an OpenAI (`sk-...`) or Vercel AI Gateway (`vck_...`) API key.
+
 ## How it works
 
 Run `lat init` to scaffold a `lat.md/` directory, then write markdown files describing your architecture, business logic, test specs — whatever matters. Link between sections using `[[file#Section#Subsection]]` syntax. Annotate source code with `// @lat: [[section-id]]` (or `# @lat: [[section-id]]` in Python) comments to tie implementation back to concepts.
