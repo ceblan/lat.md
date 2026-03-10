@@ -20,8 +20,7 @@ export function formatSectionPreview(
     latticeDir + '/' + section.file + '.md',
   );
 
-  const prefix =
-    opts?.index != null ? `${chalk.dim(`${opts.index}.`)} ` : '  ';
+  const prefix = opts?.index != null ? `${chalk.dim(`${opts.index}.`)} ` : '  ';
   const indent = opts?.index != null ? '   ' : '  ';
 
   const lines: string[] = [
@@ -47,11 +46,7 @@ export function formatResultList(
   latticeDir: string,
   opts?: { numbered?: boolean },
 ): string {
-  const lines: string[] = [
-    '',
-    chalk.bold(header),
-    '',
-  ];
+  const lines: string[] = ['', chalk.bold(header), ''];
 
   for (let i = 0; i < sections.length; i++) {
     if (i > 0) lines.push('');

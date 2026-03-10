@@ -150,7 +150,9 @@ export function parseSections(filePath: string, content: string): Section[] {
       for (let j = i + 1; j < children.length; j++) {
         if (children[j].type === 'heading') break;
         if (children[j].type === 'paragraph') {
-          flat[headingIdx].body = inlineText(children[j] as unknown as { children: RootContent[] });
+          flat[headingIdx].body = inlineText(
+            children[j] as unknown as { children: RootContent[] },
+          );
           break;
         }
       }

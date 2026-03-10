@@ -55,9 +55,7 @@ export type ScanResult = {
   files: string[];
 };
 
-export async function scanCodeRefs(
-  projectRoot: string,
-): Promise<ScanResult> {
+export async function scanCodeRefs(projectRoot: string): Promise<ScanResult> {
   const files = await walkFiles(projectRoot);
   const refs: CodeRef[] = [];
 

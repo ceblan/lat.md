@@ -8,66 +8,66 @@
  * Both modes expose an OpenAI-compatible POST /embeddings endpoint.
  */
 
-import { createHash } from 'node:crypto'
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { createServer, type Server } from 'node:http'
-import type { EmbeddingProvider } from '../src/search/provider.js'
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { createServer, type Server } from 'node:http';
+import type { EmbeddingProvider } from '../src/search/provider.js';
 
 type Manifest = {
-  dimensions: number
-  vectors: Record<string, number>
-}
+  dimensions: number;
+  vectors: Record<string, number>;
+};
 
 function textHash(text: string): string {
-  return createHash('sha256').update(text).digest('hex')
+  return createHash('sha256').update(text).digest('hex');
 }
 
 // --- Shared types ---
 
 type ReplayServerResult = {
-  server: Server
-  port: number
-  url: string
+  server: Server;
+  port: number;
+  url: string;
   /** Call to flush captured data (capture mode only) */
-  flush: () => void
-}
+  flush: () => void;
+};
 
 // --- Replay mode ---
 
 function readVector(buf: Buffer, index: number, dimensions: number): number[] {
-  const vec: number[] = []
-  const offset = index * dimensions * 4
+  const vec: number[] = [];
+  const offset = index * dimensions * 4;
   for (let i = 0; i < dimensions; i++) {
-    vec.push(buf.readFloatLE(offset + i * 4))
+    vec.push(buf.readFloatLE(offset + i * 4));
   }
-  return vec
+  return vec;
 }
 
 function createReplayHandler(replayDir: string) {
   const manifest: Manifest = JSON.parse(
     readFileSync(join(replayDir, 'manifest.json'), 'utf-8'),
-  )
-  const buf = Buffer.from(readFileSync(join(replayDir, 'vectors.bin')))
+  );
+  const buf = Buffer.from(readFileSync(join(replayDir, 'vectors.bin')));
 
   return (input: string[]) => {
-    const data = []
+    const data = [];
     for (let i = 0; i < input.length; i++) {
-      const hash = textHash(input[i])
-      const vecIndex = manifest.vectors[hash]
+      const hash = textHash(input[i]);
+      const vecIndex = manifest.vectors[hash];
       if (vecIndex === undefined) {
         return {
           error: `No cached vector for hash ${hash} (text: "${input[i].slice(0, 80)}..."). Re-run: pnpm cook-test-rag`,
-        }
+        };
       }
       data.push({
         object: 'embedding',
         index: i,
         embedding: readVector(buf, vecIndex, manifest.dimensions),
-      })
+      });
     }
-    return { data }
-  }
+    return { data };
+  };
 }
 
 // --- Capture mode ---
@@ -77,7 +77,7 @@ function createCaptureHandler(
   realProvider: EmbeddingProvider,
   realKey: string,
 ) {
-  const captured = new Map<string, number[]>()
+  const captured = new Map<string, number[]>();
 
   const handler = async (input: string[]) => {
     // Forward to real API
@@ -85,22 +85,24 @@ function createCaptureHandler(
       method: 'POST',
       headers: realProvider.headers(realKey),
       body: JSON.stringify({ model: realProvider.model, input }),
-    })
+    });
 
     if (!resp.ok) {
-      const body = await resp.text()
-      return { error: `Real API error (${resp.status}): ${body.slice(0, 200)}` }
+      const body = await resp.text();
+      return {
+        error: `Real API error (${resp.status}): ${body.slice(0, 200)}`,
+      };
     }
 
     const json = (await resp.json()) as {
-      data: { embedding: number[]; index: number }[]
-    }
-    const sorted = json.data.sort((a, b) => a.index - b.index)
+      data: { embedding: number[]; index: number }[];
+    };
+    const sorted = json.data.sort((a, b) => a.index - b.index);
 
     // Record each text→vector
     for (let i = 0; i < input.length; i++) {
-      const hash = textHash(input[i])
-      captured.set(hash, sorted[i].embedding)
+      const hash = textHash(input[i]);
+      captured.set(hash, sorted[i].embedding);
     }
 
     return {
@@ -109,33 +111,38 @@ function createCaptureHandler(
         index: i,
         embedding: item.embedding,
       })),
-    }
-  }
+    };
+  };
 
   const flush = () => {
-    mkdirSync(replayDir, { recursive: true })
+    mkdirSync(replayDir, { recursive: true });
 
-    const entries = [...captured.entries()]
-    if (entries.length === 0) return
+    const entries = [...captured.entries()];
+    if (entries.length === 0) return;
 
-    const dimensions = entries[0][1].length
-    const manifest: Manifest = { dimensions, vectors: {} }
+    const dimensions = entries[0][1].length;
+    const manifest: Manifest = { dimensions, vectors: {} };
 
-    const buf = Buffer.alloc(entries.length * dimensions * 4)
+    const buf = Buffer.alloc(entries.length * dimensions * 4);
     for (let i = 0; i < entries.length; i++) {
-      const [hash, vec] = entries[i]
-      manifest.vectors[hash] = i
+      const [hash, vec] = entries[i];
+      manifest.vectors[hash] = i;
       for (let j = 0; j < dimensions; j++) {
-        buf.writeFloatLE(vec[j], (i * dimensions + j) * 4)
+        buf.writeFloatLE(vec[j], (i * dimensions + j) * 4);
       }
     }
 
-    writeFileSync(join(replayDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
-    writeFileSync(join(replayDir, 'vectors.bin'), buf)
-    console.log(`Captured ${entries.length} vectors (${buf.length} bytes) to ${replayDir}`)
-  }
+    writeFileSync(
+      join(replayDir, 'manifest.json'),
+      JSON.stringify(manifest, null, 2) + '\n',
+    );
+    writeFileSync(join(replayDir, 'vectors.bin'), buf);
+    console.log(
+      `Captured ${entries.length} vectors (${buf.length} bytes) to ${replayDir}`,
+    );
+  };
 
-  return { handler, flush }
+  return { handler, flush };
 }
 
 // --- Public API ---
@@ -144,61 +151,61 @@ export function startReplayServer(
   replayDir: string,
   opts?: { capture: true; provider: EmbeddingProvider; key: string },
 ): Promise<ReplayServerResult> {
-  let handler: (input: string[]) => any
-  let flush = () => {}
+  let handler: (input: string[]) => any;
+  let flush = () => {};
 
   if (opts?.capture) {
-    const cap = createCaptureHandler(replayDir, opts.provider, opts.key)
-    handler = cap.handler
-    flush = cap.flush
+    const cap = createCaptureHandler(replayDir, opts.provider, opts.key);
+    handler = cap.handler;
+    flush = cap.flush;
   } else {
-    const replay = createReplayHandler(replayDir)
-    handler = replay
+    const replay = createReplayHandler(replayDir);
+    handler = replay;
   }
 
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/embeddings') {
-        let body = ''
+        let body = '';
         req.on('data', (chunk: Buffer) => {
-          body += chunk.toString()
-        })
+          body += chunk.toString();
+        });
         req.on('end', async () => {
           try {
-            const { input } = JSON.parse(body) as { input: string[] }
-            const result = await handler(input)
+            const { input } = JSON.parse(body) as { input: string[] };
+            const result = await handler(input);
 
             if (result.error) {
-              res.writeHead(500, { 'Content-Type': 'application/json' })
-              res.end(JSON.stringify({ error: result.error }))
-              return
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: result.error }));
+              return;
             }
 
-            res.writeHead(200, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ object: 'list', data: result.data }))
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ object: 'list', data: result.data }));
           } catch (err) {
-            res.writeHead(500, { 'Content-Type': 'application/json' })
-            res.end(JSON.stringify({ error: String(err) }))
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: String(err) }));
           }
-        })
+        });
       } else {
-        res.writeHead(404)
-        res.end('Not found')
+        res.writeHead(404);
+        res.end('Not found');
       }
-    })
+    });
 
     server.listen(0, '127.0.0.1', () => {
-      const addr = server.address() as { port: number }
+      const addr = server.address() as { port: number };
       resolve({
         server,
         port: addr.port,
         url: `http://127.0.0.1:${addr.port}`,
         flush,
-      })
-    })
-  })
+      });
+    });
+  });
 }
 
 export function hasReplayData(replayDir: string): boolean {
-  return existsSync(join(replayDir, 'manifest.json'))
+  return existsSync(join(replayDir, 'manifest.json'));
 }

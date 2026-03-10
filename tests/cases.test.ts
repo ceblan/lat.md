@@ -51,7 +51,9 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
 
-    const running = flat.find((s) => s.id === 'dev-process#Testing#Running Tests')!;
+    const running = flat.find(
+      (s) => s.id === 'dev-process#Testing#Running Tests',
+    )!;
     expect(running.startLine).toBe(5);
     expect(running.endLine).toBe(8);
     expect(running.body).toBe('Run tests with vitest.');
@@ -105,7 +107,9 @@ describe('basic-project', () => {
   it('formats section preview with body', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
-    const running = flat.find((s) => s.id === 'dev-process#Testing#Running Tests')!;
+    const running = flat.find(
+      (s) => s.id === 'dev-process#Testing#Running Tests',
+    )!;
 
     const output = stripAnsi(formatSectionPreview(running, lat));
     const lines = output.split('\n');

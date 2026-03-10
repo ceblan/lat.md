@@ -1,16 +1,16 @@
-import { createClient, type Client } from '@libsql/client'
-import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { createClient, type Client } from '@libsql/client';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 export function openDb(latDir: string): Client {
-  const cacheDir = join(latDir, '.cache')
-  mkdirSync(cacheDir, { recursive: true })
+  const cacheDir = join(latDir, '.cache');
+  mkdirSync(cacheDir, { recursive: true });
 
   const client = createClient({
     url: `file:${join(cacheDir, 'vectors.db')}`,
-  })
+  });
 
-  return client
+  return client;
 }
 
 export async function ensureSchema(
@@ -27,21 +27,21 @@ export async function ensureSchema(
       embedding F32_BLOB(${dimensions}),
       updated_at INTEGER NOT NULL
     )`,
-  )
+  );
 
   await db.execute(
     `CREATE INDEX IF NOT EXISTS sections_vec_idx
      ON sections (libsql_vector_idx(embedding))`,
-  )
+  );
 
   await db.execute(
     `CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )`,
-  )
+  );
 }
 
 export async function closeDb(db: Client): Promise<void> {
-  db.close()
+  db.close();
 }

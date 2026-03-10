@@ -65,9 +65,7 @@ export async function checkMd(latticeDir: string): Promise<CheckResult> {
   return { errors, files: countByExt(files) };
 }
 
-export async function checkCodeRefs(
-  latticeDir: string,
-): Promise<CheckResult> {
+export async function checkCodeRefs(latticeDir: string): Promise<CheckResult> {
   const projectRoot = join(latticeDir, '..');
   const allSections = await loadAllSections(latticeDir);
   const flat = flattenSections(allSections);
@@ -132,9 +130,7 @@ function formatErrors(ctx: CliContext, errors: CheckError[]): void {
 }
 
 function formatStats(ctx: CliContext, stats: FileStats): void {
-  const entries = Object.entries(stats).sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const entries = Object.entries(stats).sort(([a], [b]) => a.localeCompare(b));
   const parts = entries.map(([ext, n]) => `${n} ${ext}`);
   console.log(ctx.chalk.dim(`Scanned ${parts.join(', ')}`));
 }

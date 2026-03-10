@@ -10,6 +10,12 @@ describe('typecheck', () => {
   });
 });
 
+describe('prettier', () => {
+  it('ensures all source files are formatted', () => {
+    execSync('pnpm format:check', { cwd: import.meta.dirname + '/..' });
+  });
+});
+
 describe('lat check', () => {
   it('passes all checks (wiki links + code refs)', () => {
     execSync('node dist/src/cli/index.js check', {

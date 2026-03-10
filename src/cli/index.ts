@@ -111,14 +111,19 @@ program
   .argument('[query]', 'search query in plain English')
   .option('--limit <n>', 'max results', '5')
   .option('--reindex', 'force full re-indexing')
-  .action(async (query: string | undefined, opts: { limit: string; reindex?: boolean }) => {
-    const ctx = resolveContext(program.opts());
-    const { searchCmd } = await import('./search.js');
-    await searchCmd(ctx, query, {
-      limit: parseInt(opts.limit),
-      reindex: opts.reindex,
-    });
-  });
+  .action(
+    async (
+      query: string | undefined,
+      opts: { limit: string; reindex?: boolean },
+    ) => {
+      const ctx = resolveContext(program.opts());
+      const { searchCmd } = await import('./search.js');
+      await searchCmd(ctx, query, {
+        limit: parseInt(opts.limit),
+        reindex: opts.reindex,
+      });
+    },
+  );
 
 program
   .command('init')
