@@ -17,10 +17,13 @@ A `wikiLink` node has `value` (the target string) and `data.alias` (string or nu
 A section is a heading plus everything under it until the next same-or-higher-depth heading. Parsed by `parseSections()` in `src/lattice.ts`.
 
 Each section has:
-- `id` — hierarchical path like `Dev Process#Testing#Running Tests`
+- `id` — hierarchical path where the first segment is the file stem: `dev-process#Testing#Running Tests`
+- `heading` — the heading text
+- `depth` — markdown heading level (1–6)
+- `file` — the file stem (without `.md`)
+- `children` — nested subsections forming a tree
 - `startLine` / `endLine` — source positions
 - `body` — first paragraph text (used by [[cli#Section Preview]])
-- `file` — the file stem (without `.md`)
 
 [[markdown#Frontmatter]] is stripped before parsing.
 

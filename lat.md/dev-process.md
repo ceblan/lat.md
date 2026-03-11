@@ -29,7 +29,7 @@ Every test run includes a full `tsc --noEmit` pass over the entire codebase. If 
 
 ## File Walking
 
-`walkFiles` uses the `ignore-walk` npm package configured with `.gitignore` to scan for `@lat:` code references. Generated, vendored, and build files that are gitignored won't produce spurious code refs. The `.git/`, `lat.md/`, and `.claude/` directories are additionally filtered out.
+`walkFiles` uses the `ignore-walk` npm package configured with `.gitignore` to scan for `@lat:` code references. Generated, vendored, and build files that are gitignored won't produce spurious code refs. The `.git/`, `lat.md/`, `.claude/` directories and all `.md` files are additionally filtered out. Directories containing their own `lat.md/` (sub-projects) are also skipped to avoid scanning nested projects.
 
 ## Formatting
 

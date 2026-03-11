@@ -6,8 +6,8 @@ The `lat` command line tool. Entry point: `src/cli/index.ts`.
 
 Find sections by query. Results are returned in priority order:
 
-1. **Exact match** — full section path matches (case-insensitive). If the query contains `#` (a full path), only exact matches are returned.
-2. **Subsection match** — the query matches a trailing segment of a section id. e.g. `Frontmatter` matches `markdown#Frontmatter`.
+1. **Exact match** — full section path matches (case-insensitive). If the query contains `#` (a full path), subsection matching is skipped but fuzzy matching still applies as a fallback.
+2. **Subsection match** — the query matches a trailing segment of a section id. e.g. `Frontmatter` matches `markdown#Frontmatter`. Skipped when the query contains `#`.
 3. **Fuzzy match** — sections whose id or trailing segments are within edit distance (Levenshtein, max 40% of string length). e.g. `Frontmattar` matches `markdown#Frontmatter`.
 
 Outputs a [[cli#Section Preview]] for each match.
@@ -18,7 +18,7 @@ Implementation: `src/cli/locate.ts`, matching logic in `findSections()` in `src/
 
 ## refs
 
-Find sections that reference a given section via [[parser#Wiki Links]]. Outputs a [[cli#Section Preview]] for each referring section.
+Find sections that reference a given section via [[parser#Wiki Links]]. Requires an exact full-path match on the query (case-insensitive). If no exact match exists, shows "Did you mean:" suggestions from fuzzy/subsection matches and exits. Outputs a [[cli#Section Preview]] for each referring section.
 
 Usage: `lat refs <query> [--scope=md|code|md+code]`
 
@@ -45,7 +45,7 @@ Validate that all [[parser#Wiki Links]] in `lat.md` markdown files point to exis
 ### code-refs
 
 Two validations:
-1. Every `// @lat: [[...]]` comment in source code must point to a real section in `lat.md/`
+1. Every `// @lat: [[...]]` or `# @lat: [[...]]` comment in source code must point to a real section in `lat.md/`
 2. For files with [[markdown#Frontmatter#require-code-mention]], every leaf section must be referenced by at least one `// @lat:` comment in the codebase
 
 ## prompt
