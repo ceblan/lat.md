@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import xdg from '@folder/xdg';
@@ -39,13 +40,39 @@ export function writeConfig(config: LatConfig): void {
 /**
  * Returns the LLM key from (in priority order):
  * 1. LAT_LLM_KEY environment variable
- * 2. llm_key field in ~/.config/lat/config.json
+ * 2. LAT_LLM_KEY_FILE — path to a file containing the key
+ * 3. LAT_LLM_KEY_HELPER — shell command that prints the key
+ * 4. llm_key field in ~/.config/lat/config.json
  *
- * Returns undefined if neither is set.
+ * Returns undefined if none is set.
  */
 export function getLlmKey(): string | undefined {
   const envKey = process.env.LAT_LLM_KEY;
   if (envKey) return envKey;
+
+  const file = process.env.LAT_LLM_KEY_FILE;
+  if (file) {
+    const content = readFileSync(file, 'utf-8').trim();
+    if (!content) {
+      throw new Error(`LAT_LLM_KEY_FILE (${file}) is empty.`);
+    }
+    return content;
+  }
+
+  const helper = process.env.LAT_LLM_KEY_HELPER;
+  if (helper) {
+    const result = execSync(helper, {
+      encoding: 'utf-8',
+      timeout: 10_000,
+    }).trim();
+    if (!result) {
+      throw new Error('LAT_LLM_KEY_HELPER command returned an empty string.');
+    }
+    return result;
+  }
+
   const config = readConfig();
-  return config.llm_key || undefined;
+  if (config.llm_key) return config.llm_key;
+
+  return undefined;
 }

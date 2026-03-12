@@ -13,13 +13,19 @@ export async function searchCmd(
   query: string | undefined,
   opts: { limit: number; reindex?: boolean },
 ): Promise<void> {
-  const key = getLlmKey();
+  let key: string | undefined;
+  try {
+    key = getLlmKey();
+  } catch (err) {
+    console.error(chalk.red((err as Error).message));
+    process.exit(1);
+  }
   if (!key) {
     console.error(
-      chalk.red('LAT_LLM_KEY is not set.') +
-        ' Set the LAT_LLM_KEY env var, or run ' +
+      chalk.red('No API key configured.') +
+        ' Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run ' +
         chalk.cyan('lat init') +
-        ' to save a key in ' +
+        ' to save one in ' +
         chalk.dim(getConfigPath()) +
         '.',
     );

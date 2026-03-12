@@ -382,11 +382,17 @@ export async function checkAllCmd(ctx: CliContext): Promise<void> {
   console.log(ctx.chalk.green('All checks passed'));
 
   const { getLlmKey } = await import('../config.js');
-  if (!getLlmKey()) {
+  let hasKey = false;
+  try {
+    hasKey = !!getLlmKey();
+  } catch {
+    // key resolution failed (e.g. empty file) — treat as missing
+  }
+  if (!hasKey) {
     console.log(
       ctx.chalk.yellow('Warning:') +
         ' No LLM key found — semantic search (lat search) will not work.' +
-        ' Set LAT_LLM_KEY env var or run ' +
+        ' Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run ' +
         ctx.chalk.cyan('lat init') +
         ' to configure.',
     );

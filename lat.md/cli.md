@@ -133,7 +133,7 @@ User-level configuration is stored in `~/.config/lat/config.json` (XDG Base Dire
 Currently supports one field:
 - `llm_key` — embedding API key for semantic search, used when `LAT_LLM_KEY` env var is not set
 
-Key resolution order: `LAT_LLM_KEY` env var takes priority, then `llm_key` from the config file. This applies everywhere: `lat search`, `lat check`, and the MCP `lat_search` tool.
+Key resolution order: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`. This applies everywhere: `lat search`, `lat check`, and the MCP `lat_search` tool.
 
 Implementation: `src/config.ts`
 
@@ -167,13 +167,20 @@ Implementation: `src/cli/search.ts`, core logic in `src/search/`
 
 ### Provider Detection
 
-Requires an LLM key (see [[cli#Configuration File]] for resolution order). Provider is auto-detected from key prefix:
+Requires an LLM key resolved by `getLlmKey()` (`src/config.ts`) in priority order:
+
+1. `LAT_LLM_KEY` env var — direct value
+2. `LAT_LLM_KEY_FILE` env var — path to a file containing the key (read and trimmed)
+3. `LAT_LLM_KEY_HELPER` env var — shell command that prints the key to stdout (10 s timeout)
+4. `llm_key` from config file (see [[cli#Configuration File]])
+
+Provider is auto-detected from the resolved key prefix:
 - `sk-...` — OpenAI (uses `text-embedding-3-small`, 1536 dims)
 - `vck_...` — Vercel AI Gateway (uses `openai/text-embedding-3-small`, 1536 dims)
 - `sk-ant-...` — Anthropic (not supported, errors with guidance)
 - `REPLAY_LAT_LLM_KEY::<url>` — test-only replay server for offline testing
 
-Implementation: `src/search/provider.ts`
+Implementation: `src/search/provider.ts`, `src/config.ts`
 
 ### Embeddings
 

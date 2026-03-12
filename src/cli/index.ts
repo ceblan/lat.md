@@ -5,7 +5,7 @@ if (!process.argv.includes('--verbose')) {
   process.noDeprecation = true;
 }
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Command } from 'commander';
@@ -164,6 +164,16 @@ program
   .action(async () => {
     const { startMcpServer } = await import('../mcp/server.js');
     await startMcpServer();
+  });
+
+program
+  .command('config')
+  .description('Show configuration file path')
+  .action(async () => {
+    const { getConfigPath } = await import('../config.js');
+    const configPath = getConfigPath();
+    const exists = existsSync(configPath);
+    console.log(`Config file: ${configPath}${exists ? '' : ' (not found)'}`);
   });
 
 await program.parseAsync();

@@ -106,13 +106,21 @@ export async function startMcpServer(): Promise<void> {
     },
     async ({ query, limit }) => {
       const { getLlmKey } = await import('../config.js');
-      const key = getLlmKey();
+      let key: string | undefined;
+      try {
+        key = getLlmKey();
+      } catch (err) {
+        return {
+          content: [{ type: 'text' as const, text: (err as Error).message }],
+          isError: true,
+        };
+      }
       if (!key) {
         return {
           content: [
             {
               type: 'text' as const,
-              text: 'No LLM key found. Set LAT_LLM_KEY env var or run `lat init` to save a key in ~/.config/lat/config.json.',
+              text: 'No LLM key found. Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run `lat init`.',
             },
           ],
           isError: true,

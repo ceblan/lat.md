@@ -29,7 +29,7 @@ npm install -g lat.md
 
 Or use directly with `npx lat.md@latest <command>`.
 
-For semantic search (`lat search`), set the `LAT_LLM_KEY` environment variable with an OpenAI (`sk-...`) or Vercel AI Gateway (`vck_...`) API key.
+After installing, run `lat init` in the repo you want to use lat in.
 
 ## How it works
 
@@ -57,6 +57,15 @@ npx lat.md refs "auth#OAuth Flow"      # find what references a section
 npx lat.md search "how do we auth?"    # semantic search via embeddings
 npx lat.md prompt "fix [[OAuth Flow]]" # expand [[refs]] in a prompt for agents
 ```
+
+## Configuration
+
+Semantic search (`lat search`) requires an OpenAI (`sk-...`) or Vercel AI Gateway (`vck_...`) API key. The key is resolved in order:
+
+1. `LAT_LLM_KEY` env var — direct value
+2. `LAT_LLM_KEY_FILE` env var — path to a file containing the key
+3. `LAT_LLM_KEY_HELPER` env var — shell command that prints the key (10s timeout)
+4. Config file — saved by `lat init`. Run `lat config` to see its location.
 
 ## Development
 
