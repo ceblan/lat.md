@@ -41,12 +41,12 @@ export function detectProvider(key: string): EmbeddingProvider {
   }
   if (key.startsWith('sk-ant-')) {
     throw new Error(
-      "Anthropic doesn't offer an embedding model. Set LAT_LLM_KEY to an OpenAI (sk-...) or Vercel AI (vck_...) key.",
+      "Anthropic doesn't offer an embedding model. Set LAT_LLM_KEY to an OpenAI (sk-...) or Vercel AI Gateway (vck_...) key.",
     );
   }
   if (key.startsWith('vck_')) return vercel;
   if (key.startsWith('sk-')) return openai;
   throw new Error(
-    `Unrecognized LAT_LLM_KEY prefix. Supported: OpenAI (sk-...), Vercel AI (vck_...).`,
+    `Unrecognized LAT_LLM_KEY prefix. Supported: OpenAI (sk-...), Vercel AI Gateway (vck_...).`,
   );
 }

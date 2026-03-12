@@ -159,12 +159,12 @@ describe.skipIf(!canRunSearch)('mcp search (rag)', () => {
 
   // @lat: [[tests/mcp#lat_search returns no results message]]
   it('lat_search returns no results message when key is missing', async () => {
-    // Spin up a separate MCP server without LAT_LLM_KEY
+    // Spin up a separate MCP server without LAT_LLM_KEY and without XDG config
     const transport2 = new StdioClientTransport({
       command: 'node',
       args: [cliPath, 'mcp'],
       cwd: tmp,
-      env: { ...process.env, LAT_LLM_KEY: '' },
+      env: { ...process.env, LAT_LLM_KEY: '', XDG_CONFIG_HOME: tmp },
     });
     const client2 = new Client({ name: 'test2', version: '0.1' });
     await client2.connect(transport2);
@@ -174,7 +174,7 @@ describe.skipIf(!canRunSearch)('mcp search (rag)', () => {
       arguments: { query: 'anything' },
     });
     const text = (result.content as { type: string; text: string }[])[0].text;
-    expect(text).toContain('LAT_LLM_KEY');
+    expect(text).toContain('No LLM key found');
     expect(result.isError).toBe(true);
 
     await client2.close();

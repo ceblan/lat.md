@@ -370,7 +370,7 @@ async function setupLlmKey(
     '  relevant documentation by meaning, not just keywords. This requires an',
   );
   console.log(
-    '  embedding API key (OpenAI or Vercel AI). Without it, agents can still',
+    '  embedding API key (OpenAI or Vercel AI Gateway). Without it, agents can still',
   );
   console.log(
     '  use ' +
@@ -420,7 +420,7 @@ async function setupLlmKey(
   console.log(
     '  Supported: OpenAI (' +
       chalk.dim('sk-...') +
-      ') or Vercel AI (' +
+      ') or Vercel AI Gateway (' +
       chalk.dim('vck_...') +
       ')',
   );
@@ -449,7 +449,7 @@ async function setupLlmKey(
     console.log(
       '  lat.md needs an OpenAI (' +
         chalk.dim('sk-...') +
-        ') or Vercel AI (' +
+        ') or Vercel AI Gateway (' +
         chalk.dim('vck_...') +
         ') key.',
     );
@@ -459,7 +459,7 @@ async function setupLlmKey(
   if (!key.startsWith('sk-') && !key.startsWith('vck_')) {
     console.log(
       chalk.yellow('  Unrecognized key prefix.') +
-        ' Expected sk-... (OpenAI) or vck_... (Vercel AI).',
+        ' Expected sk-... (OpenAI) or vck_... (Vercel AI Gateway).',
     );
     console.log('  Saving anyway — you can update it later.');
   }
