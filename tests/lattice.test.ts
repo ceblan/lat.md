@@ -33,8 +33,8 @@ describe('parseSections', () => {
   it('handles multiple top-level headings', () => {
     const sections = parseSections('multi.md', '# First\n\n# Second\n');
     expect(sections).toHaveLength(2);
-    expect(sections[0].id).toBe('multi');
-    expect(sections[1].id).toBe('multi');
+    expect(sections[0].id).toBe('multi#First');
+    expect(sections[1].id).toBe('multi#Second');
   });
 
   it('uses file stem without .md extension', () => {

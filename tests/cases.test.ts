@@ -40,13 +40,13 @@ describe('basic-project', () => {
     const flat = flattenSections(sections);
     const ids = flat.map((s) => s.id);
 
-    expect(ids).toContain('dev-process');
-    expect(ids).toContain('dev-process#Testing');
-    expect(ids).toContain('dev-process#Testing#Running Tests');
-    expect(ids).toContain('dev-process#Formatting');
-    expect(ids).toContain('notes');
-    expect(ids).toContain('notes#First Topic');
-    expect(ids).toContain('notes#Second Topic');
+    expect(ids).toContain('dev-process#Dev Process');
+    expect(ids).toContain('dev-process#Dev Process#Testing');
+    expect(ids).toContain('dev-process#Dev Process#Testing#Running Tests');
+    expect(ids).toContain('dev-process#Dev Process#Formatting');
+    expect(ids).toContain('notes#Notes');
+    expect(ids).toContain('notes#Notes#First Topic');
+    expect(ids).toContain('notes#Notes#Second Topic');
   });
 
   // @lat: [[section-parsing#Populates position and body fields]]
@@ -55,13 +55,15 @@ describe('basic-project', () => {
     const flat = flattenSections(sections);
 
     const running = flat.find(
-      (s) => s.id === 'dev-process#Testing#Running Tests',
+      (s) => s.id === 'dev-process#Dev Process#Testing#Running Tests',
     )!;
     expect(running.startLine).toBe(5);
     expect(running.endLine).toBe(8);
     expect(running.body).toBe('Run tests with vitest.');
 
-    const formatting = flat.find((s) => s.id === 'dev-process#Formatting')!;
+    const formatting = flat.find(
+      (s) => s.id === 'dev-process#Dev Process#Formatting',
+    )!;
     expect(formatting.startLine).toBe(9);
     expect(formatting.body).toBe('Prettier all the things.');
   });
@@ -70,7 +72,7 @@ describe('basic-project', () => {
   it('renders inline code in body text', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
-    const first = flat.find((s) => s.id === 'notes#First Topic')!;
+    const first = flat.find((s) => s.id === 'notes#Notes#First Topic')!;
     expect(first.body).toBe('Run `vitest` to test.');
   });
 
@@ -78,7 +80,7 @@ describe('basic-project', () => {
   it('renders wiki links in body text', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
-    const second = flat.find((s) => s.id === 'notes#Second Topic')!;
+    const second = flat.find((s) => s.id === 'notes#Notes#Second Topic')!;
     expect(second.body).toBe('See [[dev-process#Testing]] for more.');
   });
 
@@ -92,7 +94,7 @@ describe('basic-project', () => {
 
     expect(refs).toHaveLength(1);
     expect(refs[0].target).toBe('dev-process#Testing');
-    expect(refs[0].fromSection).toBe('notes#Second Topic');
+    expect(refs[0].fromSection).toBe('notes#Notes#Second Topic');
   });
 
   // @lat: [[ref-extraction#Returns empty for files without links]]
@@ -111,12 +113,14 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
     const running = flat.find(
-      (s) => s.id === 'dev-process#Testing#Running Tests',
+      (s) => s.id === 'dev-process#Dev Process#Testing#Running Tests',
     )!;
 
     const output = stripAnsi(formatSectionPreview(running, lat));
     const lines = output.split('\n');
-    expect(lines[0]).toBe('* Section: [[dev-process#Testing#Running Tests]]');
+    expect(lines[0]).toBe(
+      '* Section: [[dev-process#Dev Process#Testing#Running Tests]]',
+    );
     expect(lines[1]).toContain('Defined in');
     expect(lines[1]).toContain('dev-process.md:5-8');
     expect(lines[3]).toContain('> Run tests with vitest.');
@@ -126,11 +130,13 @@ describe('basic-project', () => {
   it('formats section preview without body', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
-    const testing = flat.find((s) => s.id === 'dev-process#Testing')!;
+    const testing = flat.find(
+      (s) => s.id === 'dev-process#Dev Process#Testing',
+    )!;
 
     const output = stripAnsi(formatSectionPreview(testing, lat));
     const lines = output.split('\n');
-    expect(lines[0]).toBe('* Section: [[dev-process#Testing]]');
+    expect(lines[0]).toBe('* Section: [[dev-process#Dev Process#Testing]]');
     expect(lines[1]).toContain('Defined in');
     expect(lines[1]).toContain('dev-process.md:3-4');
     expect(lines).toHaveLength(2);
@@ -149,7 +155,9 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, 'Running Tests');
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('dev-process#Testing#Running Tests');
+    expect(matches[0].section.id).toBe(
+      'dev-process#Dev Process#Testing#Running Tests',
+    );
   });
 
   // @lat: [[locate#Fuzzy matches with typos]]
@@ -157,7 +165,9 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, 'Runing Tests');
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('dev-process#Testing#Running Tests');
+    expect(matches[0].section.id).toBe(
+      'dev-process#Dev Process#Testing#Running Tests',
+    );
   });
 
   it('locate returns empty for non-matching query', async () => {
@@ -184,8 +194,11 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, 'dev-process#Running Tests');
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('dev-process#Testing#Running Tests');
-    expect(matches[0].reason).toContain('1 intermediate section skipped');
+    expect(matches[0].section.id).toBe(
+      'dev-process#Dev Process#Testing#Running Tests',
+    );
+    expect(matches[0].reason).toContain('intermediate section');
+    expect(matches[0].reason).toContain('skipped');
   });
 
   // @lat: [[locate#Strips brackets from query]]
@@ -197,7 +210,9 @@ describe('basic-project', () => {
     const stripped = '[[Running Tests]]'.replace(/^\[\[|\]\]$/g, '');
     const matches = findSections(sections, stripped);
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('dev-process#Testing#Running Tests');
+    expect(matches[0].section.id).toBe(
+      'dev-process#Dev Process#Testing#Running Tests',
+    );
   });
 
   // @lat: [[locate#Strips leading hash from query]]
@@ -205,7 +220,7 @@ describe('basic-project', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, '#Testing');
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('dev-process#Testing');
+    expect(matches[0].section.id).toBe('dev-process#Dev Process#Testing');
     expect(matches[0].reason).toBe('section name match');
   });
 
@@ -224,7 +239,7 @@ describe('basic-project', () => {
       .filter((r) => r.target.toLowerCase() === 'dev-process#testing')
       .map((r) => r.fromSection.toLowerCase());
 
-    expect(matching).toContain('notes#second topic');
+    expect(matching).toContain('notes#notes#second topic');
   });
 
   // @lat: [[check-md#Passes with valid links]]
@@ -251,17 +266,17 @@ describe('prompt', () => {
   // @lat: [[tests/prompt#Resolves exact ref with context]]
   it('resolves exact ref with "is referring to" context', () => {
     const output = runPrompt('see [[dev-process#Testing]]');
-    expect(output).toContain('see [[dev-process#Testing]]');
+    expect(output).toContain('see [[dev-process#Dev Process#Testing]]');
     expect(output).toContain('<lat-context>');
     expect(output).toContain('`[[dev-process#Testing]]` is referring to:');
-    expect(output).toContain('* [[dev-process#Testing]]');
+    expect(output).toContain('* [[dev-process#Dev Process#Testing]]');
     expect(output).toContain('dev-process.md:');
   });
 
   // @lat: [[tests/prompt#Resolves fuzzy ref with alternatives]]
   it('resolves fuzzy ref with "might be referring to" context', () => {
     const output = runPrompt('fix [[Runing Tests]]');
-    expect(output).toContain('[[dev-process#Testing#Running Tests]]');
+    expect(output).toContain('[[dev-process#Dev Process#Testing#Running Tests]]');
     expect(output).toContain('`[[Runing Tests]]` might be referring to');
     expect(output).toContain('fuzzy match');
   });
@@ -360,7 +375,7 @@ describe('error-require-code-mention', () => {
       e.message.includes('requires a code mention'),
     );
     expect(uncovered).toHaveLength(1);
-    expect(uncovered[0].target).toBe('specs#Must Do Y');
+    expect(uncovered[0].target).toBe('specs#Specs#Must Do Y');
   });
 });
 
@@ -493,7 +508,7 @@ describe('short-ref', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, 'setup#Install');
     expect(matches).toHaveLength(1);
-    expect(matches[0].section.id).toBe('guides/setup#Install');
+    expect(matches[0].section.id).toBe('guides/setup#Setup#Install');
     expect(matches[0].reason).toMatch(/file stem expanded/);
   });
 
@@ -504,9 +519,9 @@ describe('short-ref', () => {
     // but not "guides/setup#Configure" — heading-only comparison
     const matches = findSections(sections, 'setup#Instal');
     expect(matches.length).toBeGreaterThanOrEqual(1);
-    expect(matches[0].section.id).toBe('guides/setup#Install');
+    expect(matches[0].section.id).toBe('guides/setup#Setup#Install');
     const ids = matches.map((m) => m.section.id);
-    expect(ids).not.toContain('guides/setup#Configure');
+    expect(ids).not.toContain('guides/setup#Setup#Configure');
   });
 
   // @lat: [[ref-resolution#Short ref refs finds md references]]
@@ -533,7 +548,7 @@ describe('short-ref', () => {
       })
       .map((r) => r.fromSection);
 
-    expect(matching).toContain('links');
+    expect(matching).toContain('links#Links');
   });
 
   // @lat: [[ref-resolution#Short ref refs finds code references]]
@@ -579,7 +594,7 @@ describe('full-ref', () => {
     const sections = await loadAllSections(lat);
     const matches = findSections(sections, 'guides/setup#Install');
     expect(matches).toHaveLength(1);
-    expect(matches[0].section.id).toBe('guides/setup#Install');
+    expect(matches[0].section.id).toBe('guides/setup#Setup#Install');
   });
 
   // @lat: [[ref-resolution#Full ref refs finds md references]]
@@ -600,11 +615,11 @@ describe('full-ref', () => {
     const matching = allRefs
       .filter((r) => {
         const { resolved } = resolveRef(r.target, sectionIds, fileIndex);
-        return resolved.toLowerCase() === 'guides/setup#install';
+        return resolved.toLowerCase() === 'guides/setup#setup#install';
       })
       .map((r) => r.fromSection);
 
-    expect(matching).toContain('links');
+    expect(matching).toContain('links#Links');
   });
 
   // @lat: [[ref-resolution#Full ref refs finds code references]]

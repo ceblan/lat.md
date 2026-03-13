@@ -114,7 +114,7 @@ export function parseSections(
     }
 
     const parent = stack.length > 0 ? stack[stack.length - 1] : null;
-    const id = parent ? `${parent.id}#${heading}` : file;
+    const id = parent ? `${parent.id}#${heading}` : `${file}#${heading}`;
 
     const section: Section = {
       id,
@@ -274,18 +274,38 @@ export function resolveRef(
   const filePart = hashIdx === -1 ? target : target.slice(0, hashIdx);
   const rest = hashIdx === -1 ? '' : target.slice(hashIdx);
 
-  const candidates = fileIndex.get(filePart) ?? [];
-  if (candidates.length === 1) {
-    const expanded = candidates[0] + rest;
+  // Try resolving the file part: either it's a full path or a bare stem
+  const filePaths = fileIndex.has(filePart)
+    ? fileIndex.get(filePart)!
+    : [filePart];
+
+  if (filePaths.length === 1) {
+    const fp = filePaths[0];
+    const expanded = fp + rest;
     if (sectionIds.has(expanded.toLowerCase())) {
       return { resolved: expanded, ambiguous: null, suggested: null };
     }
-  } else if (candidates.length > 1) {
+    // Try inserting root headings between file and rest.
+    // Handles Obsidian-style file#heading refs where the h1 is implicit.
+    const rootHeadings = findRootHeadings(fp, sectionIds);
+    for (const h1 of rootHeadings) {
+      const withRoot = rest ? `${fp}#${h1}${rest}` : `${fp}#${h1}`;
+      if (sectionIds.has(withRoot.toLowerCase())) {
+        return { resolved: withRoot, ambiguous: null, suggested: null };
+      }
+    }
+  } else if (filePaths.length > 1) {
     // Multiple files share this stem — ambiguous at the filename level
-    const all = candidates.map((c) => c + rest);
-    const valid = candidates.filter((c) =>
-      sectionIds.has((c + rest).toLowerCase()),
-    );
+    const all = filePaths.map((c) => c + rest);
+    const valid = filePaths.filter((c) => {
+      if (sectionIds.has((c + rest).toLowerCase())) return true;
+      // Also try with root heading insertion
+      const rootHeadings = findRootHeadings(c, sectionIds);
+      return rootHeadings.some((h1) => {
+        const withRoot = rest ? `${c}#${h1}${rest}` : `${c}#${h1}`;
+        return sectionIds.has(withRoot.toLowerCase());
+      });
+    });
     return {
       resolved: target,
       ambiguous: all,
@@ -294,6 +314,21 @@ export function resolveRef(
   }
 
   return { resolved: target, ambiguous: null, suggested: null };
+}
+
+/**
+ * Find root (h1) headings for a file by scanning sectionIds for entries
+ * that have exactly the pattern `file#heading` (no further # segments).
+ */
+function findRootHeadings(file: string, sectionIds: Set<string>): string[] {
+  const prefix = file.toLowerCase() + '#';
+  const headings: string[] = [];
+  for (const id of sectionIds) {
+    if (id.startsWith(prefix) && !id.includes('#', prefix.length)) {
+      headings.push(id.slice(prefix.length));
+    }
+  }
+  return headings;
 }
 
 const MAX_DISTANCE_RATIO = 0.4;
@@ -321,6 +356,20 @@ export function findSections(
   }));
   if (exactMatches.length > 0 && isFullPath) return exactMatches;
 
+  // Tier 1a: bare name matches file — return root sections of that file
+  if (!isFullPath && exactMatches.length === 0) {
+    const fileRoots = flat.filter(
+      (s) =>
+        s.file.toLowerCase() === q && !s.id.includes('#', s.file.length + 1),
+    );
+    if (fileRoots.length > 0) {
+      return fileRoots.map((s) => ({
+        section: s,
+        reason: 'exact match',
+      }));
+    }
+  }
+
   // Tier 1b: file stem expansion
   // For bare names: "locate" → matches root section of "tests/locate.md"
   // For paths with #: "setup#Install" → expands to "guides/setup#Install"
@@ -331,27 +380,62 @@ export function findSections(
     const hashIdx = normalized.indexOf('#');
     const filePart = normalized.slice(0, hashIdx);
     const rest = normalized.slice(hashIdx);
-    const paths = fileIndex.get(filePart) ?? [];
-    for (const p of paths) {
+    const stemPaths = fileIndex.get(filePart) ?? [];
+    // Also try filePart as a direct file path (for root-level files not in index)
+    const allPaths =
+      stemPaths.length > 0 ? stemPaths : filePart ? [filePart] : [];
+    for (const p of allPaths) {
       const expanded = (p + rest).toLowerCase();
       const s = flat.find(
         (s) => s.id.toLowerCase() === expanded && !exact.includes(s),
       );
-      if (s)
+      if (s) {
         stemMatches.push({
           section: s,
-          reason: `file stem expanded: ${filePart} → ${p}`,
+          reason:
+            stemPaths.length > 0
+              ? `file stem expanded: ${filePart} → ${p}`
+              : 'exact match',
         });
+        continue;
+      }
+      // Try inserting root headings: file#rest → file#h1#rest
+      const rootsOfFile = flat.filter(
+        (s) =>
+          s.file.toLowerCase() === p.toLowerCase() &&
+          !s.id.includes('#', s.file.length + 1),
+      );
+      for (const root of rootsOfFile) {
+        const withRoot = (root.id + rest).toLowerCase();
+        const match = flat.find(
+          (s) => s.id.toLowerCase() === withRoot && !exact.includes(s),
+        );
+        if (match) {
+          stemMatches.push({
+            section: match,
+            reason:
+              stemPaths.length > 0
+                ? `file stem expanded: ${filePart} → ${p}`
+                : 'exact match',
+          });
+        }
+      }
     }
     if (stemMatches.length > 0) return [...exactMatches, ...stemMatches];
   } else {
-    // Bare name: match file root sections via stem index
+    // Bare name: match root sections of files via stem index
     const paths = fileIndex.get(normalized) ?? [];
     for (const p of paths) {
-      const s = flat.find(
-        (s) => s.id.toLowerCase() === p.toLowerCase() && !exact.includes(s),
-      );
-      if (s) stemMatches.push({ section: s, reason: 'file stem match' });
+      for (const s of flat) {
+        if (exact.includes(s)) continue;
+        // Root sections have id = "file#heading" (exactly 2 segments)
+        if (
+          s.file.toLowerCase() === p.toLowerCase() &&
+          !s.id.includes('#', s.file.length + 1)
+        ) {
+          stemMatches.push({ section: s, reason: 'file stem match' });
+        }
+      }
     }
   }
 
@@ -509,7 +593,7 @@ export function extractRefs(
       stack.pop();
     }
     const parent = stack.length > 0 ? stack[stack.length - 1] : null;
-    const id = parent ? `${parent.id}#${heading}` : file;
+    const id = parent ? `${parent.id}#${heading}` : `${file}#${heading}`;
     flat[idx].id = id;
     stack.push({ id, depth });
     idx++;

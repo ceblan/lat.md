@@ -54,7 +54,7 @@ describe('mcp', () => {
       arguments: { query: 'Testing' },
     });
     const text = (result.content as { type: string; text: string }[])[0].text;
-    expect(text).toContain('dev-process#Testing');
+    expect(text).toContain('dev-process#Dev Process#Testing');
   });
 
   // @lat: [[tests/mcp#lat_locate returns message for missing section]]

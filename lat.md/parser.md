@@ -17,7 +17,7 @@ A `wikiLink` node has `value` (the target string) and `data.alias` (string or nu
 A section is a heading plus everything under it until the next same-or-higher-depth heading. Parsed by `parseSections()` in `src/lattice.ts`.
 
 Each section has:
-- `id` — hierarchical path where the first segment is the vault-relative file path (without `.md`): `dev-process#Testing#Running Tests`, `tests/search#RAG Replay Tests`
+- `id` — hierarchical path: `file#H1#H2#...` where the first segment is the vault-relative file path (without `.md`) and every heading level is included: `dev-process#Dev Process#Testing#Running Tests`, `tests/search#Search Tests#RAG Replay Tests`
 - `heading` — the heading text
 - `depth` — markdown heading level (1–6)
 - `file` — vault-relative file path without `.md` (e.g. `dev-process`, `tests/search`)
@@ -29,7 +29,9 @@ Each section has:
 
 ## Short Ref Resolution
 
-References can use just the file name (without directory path) when the name is unique across the vault. For example, `[[search#Provider Detection]]` resolves to `tests/search#Provider Detection` if there's only one `search.md` in the vault. If multiple files share the same name, the full path is required — `lat check` reports ambiguous refs as errors.
+References can use just the file name (without directory path) when the name is unique across the vault. For example, `[[search#Provider Detection]]` resolves to `tests/search#Search Tests#Provider Detection` if there's only one `search.md` in the vault. If multiple files share the same name, the full path is required — `lat check` reports ambiguous refs as errors.
+
+The root (h1) heading can be omitted in references: `[[backend#CORS]]` resolves to `backend#Backend#CORS` because the h1 heading is implicit from the file. Both `resolveRef()` and `findSections()` handle this by trying to insert root headings when a direct match fails.
 
 Resolution is handled by `resolveRef()` in `src/lattice.ts` for strict contexts (`lat check`, `lat refs`) where authored links must resolve unambiguously. Lenient contexts (`lat locate`, `lat prompt`) use `findSections()` directly, which has its own file stem expansion built in — it does not call `resolveRef`.
 
