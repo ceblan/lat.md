@@ -121,7 +121,7 @@ export default function Home() {
               border: '1px solid #222',
               borderRadius: '6px',
               padding: '14px 48px 14px 16px',
-              fontSize: 15,
+              fontSize: 14,
               color: '#aaa',
               boxSizing: 'border-box',
             }}
