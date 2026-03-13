@@ -1,3 +1,3 @@
 Project index.
 
-- **guides** — How-to guides for common tasks
+- [[guides]] — How-to guides for common tasks

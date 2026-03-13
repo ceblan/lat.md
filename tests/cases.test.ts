@@ -387,7 +387,7 @@ describe('error-missing-index', () => {
     const errors = await checkIndex(latDir('error-missing-index'));
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain('missing index file');
-    expect(errors[0].snippet).toContain('**notes.md**');
+    expect(errors[0].snippet).toContain('[[notes]]');
   });
 });
 
@@ -404,7 +404,7 @@ describe('error-stale-index', () => {
   it('reports entry that does not exist on disk', async () => {
     const errors = await checkIndex(latDir('error-stale-index'));
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain('"gone.md"');
+    expect(errors[0].message).toContain('"[[gone]]"');
     expect(errors[0].message).toContain('does not exist');
   });
 });
@@ -418,7 +418,7 @@ describe('error-missing-subdir-index', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].message).toContain('missing index file');
     expect(errors[0].message).toContain('guides');
-    expect(errors[0].snippet).toContain('**setup.md**');
+    expect(errors[0].snippet).toContain('[[setup]]');
   });
 });
 
@@ -435,7 +435,7 @@ describe('error-stale-subdir-index', () => {
   it('reports stale entry in subdirectory index', async () => {
     const errors = await checkIndex(latDir('error-stale-subdir-index'));
     expect(errors).toHaveLength(1);
-    expect(errors[0].message).toContain('"advanced.md"');
+    expect(errors[0].message).toContain('"[[advanced]]"');
     expect(errors[0].message).toContain('does not exist');
   });
 });

@@ -10,15 +10,15 @@ High-level test descriptions. Actual test code lives in `tests/`.
 
 **Error cases use `error-` prefix.** Test fixture directories that assert error behavior are named with an `error-` prefix (e.g. `error-broken-links`, `error-stale-index`). Success/happy-path fixtures use plain descriptive names (e.g. `valid-links`, `short-ref`).
 
-- **section-parsing.md** — Parsing markdown into hierarchical section trees
-- **ref-extraction.md** — Extracting wiki link references from markdown files
-- **section-preview.md** — Formatting section previews for terminal output
-- **check-md.md** — Validating wiki links in lat.md markdown files
-- **check-code-refs.md** — Validating @lat code references and coverage
-- **locate.md** — Finding sections by exact, subsection, and fuzzy matching
-- **refs-e2e.md** — End-to-end tests for the refs command
-- **search.md** — Semantic search provider detection and RAG replay tests
-- **check-index.md** — Validating directory index files
-- **prompt.md** — Prompt command ref expansion and context block formatting
-- **ref-resolution.md** — Wiki link and code ref resolution across vault subdirectories
-- **mcp.md** — MCP server tool listing and tool call responses
+- [[section-parsing]] — Parsing markdown into hierarchical section trees
+- [[ref-extraction]] — Extracting wiki link references from markdown files
+- [[section-preview]] — Formatting section previews for terminal output
+- [[check-md]] — Validating wiki links in lat.md markdown files
+- [[check-code-refs]] — Validating @lat code references and coverage
+- [[locate]] — Finding sections by exact, subsection, and fuzzy matching
+- [[refs-e2e]] — End-to-end tests for the refs command
+- [[search]] — Semantic search provider detection and RAG replay tests
+- [[check-index]] — Validating directory index files
+- [[prompt]] — Prompt command ref expansion and context block formatting
+- [[ref-resolution]] — Wiki link and code ref resolution across vault subdirectories
+- [[mcp]] — MCP server tool listing and tool call responses

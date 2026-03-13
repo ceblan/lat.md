@@ -1,3 +1,3 @@
 Project index.
 
-- **notes.md** — General project notes
+- [[notes]] — General project notes

@@ -188,10 +188,10 @@ function immediateEntries(walkedPaths: string[]): string[] {
   return [...entries].sort();
 }
 
-/** Parse bullet items from an index file. Matches `- **name** — description` */
+/** Parse bullet items from an index file. Matches `- [[name]] — description` */
 function parseIndexEntries(content: string): Set<string> {
   const names = new Set<string>();
-  const re = /^- \*\*(.+?)\*\*/gm;
+  const re = /^- \[\[([^\]]+?)(?:\|[^\]]+)?\]\]/gm;
   let match;
   while ((match = re.exec(content)) !== null) {
     names.add(match[1]);
@@ -199,9 +199,17 @@ function parseIndexEntries(content: string): Set<string> {
   return names;
 }
 
+/**
+ * Convert a filesystem entry name to its wiki link stem.
+ * Strips `.md` extension from files; directories stay as-is.
+ */
+function entryToStem(name: string): string {
+  return name.endsWith('.md') ? name.slice(0, -3) : name;
+}
+
 /** Generate a bullet-list snippet for the given entry names. */
 function indexSnippet(entries: string[]): string {
-  return entries.map((e) => `- **${e}** — <describe>`).join('\n');
+  return entries.map((e) => `- [[${entryToStem(e)}]] — <describe>`).join('\n');
 }
 
 export type IndexError = {
@@ -256,13 +264,17 @@ export async function checkIndex(latticeDir: string): Promise<IndexError[]> {
       continue;
     }
 
-    // Parse existing entries and validate
+    // Parse existing entries and validate.
+    // Listed entries are wiki link stems (no .md extension).
+    // Children are filesystem names (with .md for files, bare for dirs).
     const listed = parseIndexEntries(content);
+    const childStems = new Set(children.map(entryToStem));
+    const stemToChild = new Map(children.map((c) => [entryToStem(c), c]));
     const relDir = dir === '' ? basename(latticeDir) + '/' : dir + '/';
     const missing: string[] = [];
 
     for (const child of children) {
-      if (!listed.has(child)) {
+      if (!listed.has(entryToStem(child))) {
         missing.push(child);
       }
     }
@@ -275,11 +287,12 @@ export async function checkIndex(latticeDir: string): Promise<IndexError[]> {
       });
     }
 
+    const indexStem = entryToStem(indexFileName);
     for (const name of listed) {
-      if (!children.includes(name) && name !== indexFileName) {
+      if (!childStems.has(name) && name !== indexStem) {
         errors.push({
           dir: relDir,
-          message: `"${indexRelPath}" lists "${name}" but it does not exist`,
+          message: `"${indexRelPath}" lists "[[${name}]]" but it does not exist`,
         });
       }
     }
