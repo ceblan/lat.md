@@ -67,6 +67,7 @@ export default function Home() {
           lineHeight: 1.2,
           letterSpacing: '0.05em',
           margin: 0,
+          color: '#aaa',
         }}
       >
         {logo}
@@ -75,7 +76,7 @@ export default function Home() {
       {/* Tagline */}
       <p
         style={{
-          color: '#888',
+          color: '#555',
           fontSize: 18,
           textAlign: 'center',
           margin: 0,
@@ -103,7 +104,7 @@ export default function Home() {
               color: '#555',
             }}
           >
-            <li>* Knowledge base that evolves in sync with your codebase</li>
+            <li>* Knowledge base (spec) that evolves in sync with your codebase</li>
             <li>* Make agents understand big ideas and key business logic</li>
             <li>* Ensure corner cases have proper high-level tests that matter</li>
             <li>* Start reviewing agent diffs: focus on knowledge, not code</li>
