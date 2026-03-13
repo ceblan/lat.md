@@ -46,11 +46,12 @@ Published to npm as `lat.md`. The `bin` entry exposes the `lat` command. Only `d
 How to publish a new version:
 
 1. **Compile changelog** — run `git log --oneline` since the last version bump commit (look for commits matching `Bump to X.Y.Z`) and summarize notable changes as bullet points. Only include user-facing features, fixes, and behavioral changes — skip doc-only updates, refactors, and other commits that don't affect functionality
-2. **Create a release branch** — branch off `main`, e.g. `release/0.1.5`
-3. **Bump version** — update `version` in `package.json`. Commit message: `Bump to X.Y.Z`
-4. **Switch back to main** — check out `main` so the working tree is not left on the release branch
-5. **Push and open a PR** — push the release branch and create a PR with the changelog as the body
-6. **Merge** — once CI passes and the PR is merged to `main`, the [[dev-process#Publishing#Publish Workflow]] takes over
+2. **Sync main** — `git fetch` and rebase/merge to ensure local `main` is up to date with the remote before branching
+3. **Create a release branch** — branch off `main`, e.g. `release/0.1.5`
+4. **Bump version** — update `version` in `package.json`. Commit message: `Bump to X.Y.Z`
+5. **Switch back to main** — check out `main` so the working tree is not left on the release branch
+6. **Push main and open a PR** — push `main` first (so the release branch diff is clean), then push the release branch and create a PR with the changelog as the body
+7. **Merge** — once CI passes and the PR is merged to `main`, the [[dev-process#Publishing#Publish Workflow]] takes over
 
 Version numbers follow semver. While pre-1.0, bump the patch for fixes and the minor for features/breaking changes.
 
