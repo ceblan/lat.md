@@ -4,8 +4,6 @@ import {
   mkdirSync,
   writeFileSync,
   readFileSync,
-  copyFileSync,
-  chmodSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -48,23 +46,28 @@ async function prompt(
 
 // ── Claude Code helpers ──────────────────────────────────────────────
 
-const HOOK_COMMAND = '.claude/hooks/lat-prompt-hook.sh';
+/** Derive the hook command prefix from the currently running binary. */
+function latHookCommand(event: string): string {
+  return `${resolve(process.argv[1])} hook claude ${event}`;
+}
 
-function hasLatHook(settingsPath: string): boolean {
+function hasLatHook(settingsPath: string, event: string): boolean {
   if (!existsSync(settingsPath)) return false;
   try {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
-    const entries = settings?.hooks?.UserPromptSubmit;
+    const entries = settings?.hooks?.[event];
     if (!Array.isArray(entries)) return false;
     return entries.some((entry: { hooks?: { command?: string }[] }) =>
-      entry.hooks?.some((h) => h.command === HOOK_COMMAND),
+      entry.hooks?.some(
+        (h) => h.command?.includes('lat') && h.command?.includes(event),
+      ),
     );
   } catch {
     return false;
   }
 }
 
-function addLatHook(settingsPath: string): void {
+function addLatHooks(settingsPath: string): void {
   let settings: Record<string, unknown> = {};
   if (existsSync(settingsPath)) {
     const raw = readFileSync(settingsPath, 'utf-8');
@@ -80,13 +83,14 @@ function addLatHook(settingsPath: string): void {
   }
   const hooks = settings.hooks as Record<string, unknown>;
 
-  if (!Array.isArray(hooks.UserPromptSubmit)) {
-    hooks.UserPromptSubmit = [];
+  for (const event of ['UserPromptSubmit', 'Stop']) {
+    if (!Array.isArray(hooks[event])) {
+      hooks[event] = [];
+    }
+    (hooks[event] as unknown[]).push({
+      hooks: [{ type: 'command', command: latHookCommand(event) }],
+    });
   }
-
-  (hooks.UserPromptSubmit as unknown[]).push({
-    hooks: [{ type: 'command', command: HOOK_COMMAND }],
-  });
 
   writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n');
 }
@@ -200,35 +204,33 @@ async function setupClaudeCode(
     console.log(chalk.green('  CLAUDE.md') + ' already exists');
   }
 
-  // Prompt hook
+  // Hooks — UserPromptSubmit (lat.md reminders + [[ref]] expansion) and Stop (update reminder)
   console.log('');
   console.log(
     chalk.dim(
-      "  Claude Code doesn't reliably follow CLAUDE.md for per-prompt actions,",
+      '  Hooks inject lat.md workflow reminders into every prompt and remind',
     ),
   );
-  console.log(
-    chalk.dim(
-      '  so we install a hook that injects lat.md workflow reminders into every prompt.',
-    ),
-  );
+  console.log(chalk.dim('  the agent to update lat.md/ before finishing.'));
 
   const claudeDir = join(root, '.claude');
-  const hooksDir = join(claudeDir, 'hooks');
-  const hookPath = join(hooksDir, 'lat-prompt-hook.sh');
   const settingsPath = join(claudeDir, 'settings.json');
 
-  if (hasLatHook(settingsPath)) {
-    console.log(chalk.green('  Prompt hook') + ' already configured');
+  const hasPromptHook = hasLatHook(settingsPath, 'UserPromptSubmit');
+  const hasStopHook = hasLatHook(settingsPath, 'Stop');
+
+  if (hasPromptHook && hasStopHook) {
+    console.log(chalk.green('  Hooks') + ' already configured');
   } else {
-    mkdirSync(hooksDir, { recursive: true });
-    const templateHook = join(findTemplatesDir(), 'lat-prompt-hook.sh');
-    copyFileSync(templateHook, hookPath);
-    chmodSync(hookPath, 0o755);
-    addLatHook(settingsPath);
-    console.log(chalk.green('  Prompt hook') + ' installed');
-    created.push('.claude/hooks/lat-prompt-hook.sh');
+    mkdirSync(claudeDir, { recursive: true });
+    addLatHooks(settingsPath);
+    console.log(
+      chalk.green('  Hooks') + ' installed (UserPromptSubmit + Stop)',
+    );
   }
+
+  // Ensure .claude is gitignored (settings contain local absolute paths)
+  ensureGitignored(root, '.claude');
 
   // MCP server → .mcp.json at project root
   console.log('');

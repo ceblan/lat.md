@@ -159,6 +159,16 @@ program
   });
 
 program
+  .command('hook')
+  .description('Handle agent hook events (called by agent hooks, not directly)')
+  .argument('<agent>', 'agent name (claude)')
+  .argument('<event>', 'hook event (UserPromptSubmit, Stop)')
+  .action(async (agent: string, event: string) => {
+    const { hookCmd } = await import('./hook.js');
+    await hookCmd(agent, event);
+  });
+
+program
   .command('mcp')
   .description('Start the MCP server (stdio transport)')
   .action(async () => {

@@ -1,0 +1,115 @@
+import { findLatticeDir } from '../lattice.js';
+
+function outputPromptSubmit(context: string): void {
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit',
+        additionalContext: context,
+      },
+    }),
+  );
+}
+
+function outputStop(reason: string): void {
+  process.stdout.write(
+    JSON.stringify({
+      decision: 'block',
+      reason,
+    }),
+  );
+}
+
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf-8');
+}
+
+function hasWikiLinks(text: string): boolean {
+  return /\[\[[^\]]+\]\]/.test(text);
+}
+
+async function handleUserPromptSubmit(): Promise<void> {
+  let userPrompt = '';
+  try {
+    const raw = await readStdin();
+    const input = JSON.parse(raw);
+    userPrompt = input.user_prompt ?? '';
+  } catch {
+    // If we can't parse stdin, still emit the reminder
+  }
+
+  const parts: string[] = [];
+
+  parts.push(
+    'Before starting work on this task:',
+    '1. Run `lat search` with a query relevant to the task and read the results to understand the design intent.',
+    '2. If the prompt contains [[refs]], run `lat prompt` on the full prompt text to resolve them.',
+    '3. After completing work, run `lat check` to validate all links and code refs.',
+    'Do not skip these steps.',
+  );
+
+  // If the user prompt contains [[refs]], tell the agent to expand them
+  if (userPrompt && hasWikiLinks(userPrompt)) {
+    parts.push(
+      '',
+      'NOTE: The user prompt contains [[refs]]. Run `lat prompt` on the full prompt text BEFORE doing anything else.',
+    );
+  }
+
+  outputPromptSubmit(parts.join('\n'));
+}
+
+async function handleStop(): Promise<void> {
+  // Only emit the reminder if we're in a project with lat.md
+  const latDir = findLatticeDir();
+  if (!latDir) return;
+
+  // Read stdin to check if we already blocked once
+  let stopHookActive = false;
+  try {
+    const raw = await readStdin();
+    const input = JSON.parse(raw);
+    stopHookActive = input.stop_hook_active ?? false;
+  } catch {
+    // If we can't parse stdin, treat as first attempt
+  }
+
+  // Don't block twice — avoids infinite loop
+  if (stopHookActive) return;
+
+  const parts: string[] = [];
+
+  parts.push(
+    'Before finishing, verify:',
+    '- Did you update `lat.md/` if you changed any functionality, architecture, tests, or behavior?',
+    '- Did you run `lat check` and confirm all links and code refs pass?',
+    'If you made code changes but did not update lat.md/, do that now.',
+  );
+
+  outputStop(parts.join('\n'));
+}
+
+export async function hookCmd(agent: string, event: string): Promise<void> {
+  if (agent !== 'claude') {
+    console.error(`Unknown agent: ${agent}. Supported: claude`);
+    process.exit(1);
+  }
+
+  switch (event) {
+    case 'UserPromptSubmit':
+      await handleUserPromptSubmit();
+      break;
+    case 'Stop':
+      await handleStop();
+      break;
+    default:
+      console.error(
+        `Unknown hook event: ${event}. Supported: UserPromptSubmit, Stop`,
+      );
+      process.exit(1);
+  }
+}

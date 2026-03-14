@@ -105,7 +105,10 @@ Steps:
 ### Claude Code
 
 - `CLAUDE.md` — written directly from the template (not a symlink)
-- `.claude/hooks/lat-prompt-hook.sh` — `UserPromptSubmit` hook that injects a per-prompt reminder to consult lat.md
+- Two hooks registered in `.claude/settings.json`, both calling [[cli#hook]]:
+  - `UserPromptSubmit` → `lat hook claude UserPromptSubmit` — injects lat.md workflow reminders, detects `[[refs]]` in the prompt
+  - `Stop` → `lat hook claude Stop` — reminds the agent to update `lat.md/` before finishing
+- `.claude` directory added to `.gitignore` (settings contain local absolute paths in hook commands)
 - [[cli#mcp]] server registered in `.mcp.json` at the project root (added to `.gitignore` since it contains absolute paths)
 
 ### Cursor
@@ -136,6 +139,24 @@ Currently supports one field:
 Key resolution order: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`. This applies everywhere: `lat search`, `lat check`, and the MCP `lat_search` tool.
 
 Implementation: [[src/config.ts]]
+
+## hook
+
+Handle agent hook events. Called by agent hooks configured during `lat init`, not directly by users.
+
+Usage: `lat hook <agent> <event>`
+
+Currently supports `claude` agent with two events:
+
+### UserPromptSubmit
+
+Reads the hook input from stdin (JSON with `user_prompt`). Outputs JSON with `additionalContext` that reminds the agent to consult `lat.md` before working. If the user prompt contains `[[refs]]`, adds an extra note telling the agent to run `lat prompt` first.
+
+### Stop
+
+Blocks the agent from stopping (`decision: "block"`) with a `reason` reminding it to update `lat.md/` and run `lat check` before finishing. Only fires when a `lat.md/` directory exists in the project. Reads `stop_hook_active` from the hook input to avoid blocking twice — if the agent was already continued by a previous block, the hook exits silently to prevent an infinite loop.
+
+Implementation: [[src/cli/hook.ts]]
 
 ## mcp
 
