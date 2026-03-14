@@ -3,7 +3,6 @@ import {
   listLatticeFiles,
   loadAllSections,
   findSections,
-  parseSections,
   extractRefs,
   flattenSections,
   buildFileIndex,
@@ -15,59 +14,71 @@ import { formatResultList } from '../format.js';
 import { scanCodeRefs } from '../code-refs.js';
 import type { CliContext } from './context.js';
 
-type Scope = 'md' | 'code' | 'md+code';
+export type Scope = 'md' | 'code' | 'md+code';
 
-export async function refsCmd(
-  ctx: CliContext,
+export type RefsFound = {
+  kind: 'found';
+  target: Section;
+  mdRefs: SectionMatch[];
+  codeRefs: string[];
+};
+
+export type RefsError = {
+  kind: 'no-match';
+  suggestions: SectionMatch[];
+};
+
+export type RefsResult = RefsFound | RefsError;
+
+/**
+ * Find all sections and code locations that reference a given section.
+ * Accepts any valid section id (full-path, short-form, with or without brackets).
+ */
+export async function findRefs(
+  latDir: string,
+  projectRoot: string,
   query: string,
   scope: Scope,
-): Promise<void> {
-  const allSections = await loadAllSections(ctx.latDir);
-  const matches = findSections(allSections, query);
+): Promise<RefsResult> {
+  query = query.replace(/^\[\[|\]\]$/g, '');
 
-  if (matches.length === 0) {
-    console.error(
-      ctx.chalk.red(
-        `No section matching "${query}" (no exact, substring, or fuzzy matches)`,
-      ),
-    );
-    process.exit(1);
-  }
-
-  // Resolve short refs and require exact match
+  const allSections = await loadAllSections(latDir);
   const flat = flattenSections(allSections);
   const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
   const fileIndex = buildFileIndex(allSections);
   const { resolved } = resolveRef(query, sectionIds, fileIndex);
   const q = resolved.toLowerCase();
-  const exactMatch = flat.find((s) => s.id.toLowerCase() === q);
-  if (!exactMatch) {
-    console.error(ctx.chalk.red(`No section "${query}" found.`));
-    if (matches.length > 0) {
-      console.error(ctx.chalk.dim('\nDid you mean:\n'));
-      for (const m of matches) {
-        console.error(
-          ctx.chalk.dim('*') +
-            ' ' +
-            ctx.chalk.white(m.section.id) +
-            ' ' +
-            ctx.chalk.dim(`(${m.reason})`),
-        );
-      }
+  let exactMatch = flat.find((s) => s.id.toLowerCase() === q);
+
+  // If resolveRef didn't land on an exact id, use findSections as fallback
+  const matches = !exactMatch ? findSections(allSections, query) : [];
+  if (!exactMatch && matches.length >= 1) {
+    const top = matches[0];
+    const isConfident =
+      top.reason === 'exact match' ||
+      top.reason.startsWith('file stem expanded') ||
+      top.reason === 'section name match';
+    if (isConfident) {
+      exactMatch = top.section;
     }
-    process.exit(1);
+  }
+
+  if (!exactMatch) {
+    const suggestions =
+      matches.length > 0 ? matches : findSections(allSections, query);
+    return { kind: 'no-match', suggestions };
   }
 
   const targetId = exactMatch.id.toLowerCase();
-  const mdMatches: SectionMatch[] = [];
-  const codeLines: string[] = [];
+  const mdRefs: SectionMatch[] = [];
+  const codeRefs: string[] = [];
 
   if (scope === 'md' || scope === 'md+code') {
-    const files = await listLatticeFiles(ctx.latDir);
+    const files = await listLatticeFiles(latDir);
     const matchingFromSections = new Set<string>();
     for (const file of files) {
       const content = await readFile(file, 'utf-8');
-      const fileRefs = extractRefs(file, content, ctx.projectRoot);
+      const fileRefs = extractRefs(file, content, projectRoot);
       for (const ref of fileRefs) {
         const { resolved: refResolved } = resolveRef(
           ref.target,
@@ -85,45 +96,74 @@ export async function refsCmd(
         matchingFromSections.has(s.id.toLowerCase()),
       );
       for (const s of referrers) {
-        mdMatches.push({ section: s, reason: 'wiki link' });
+        mdRefs.push({ section: s, reason: 'wiki link' });
       }
     }
   }
 
   if (scope === 'code' || scope === 'md+code') {
-    const { refs: codeRefs } = await scanCodeRefs(ctx.projectRoot);
-    for (const ref of codeRefs) {
+    const { refs: scannedRefs } = await scanCodeRefs(projectRoot);
+    for (const ref of scannedRefs) {
       const { resolved: codeResolved } = resolveRef(
         ref.target,
         sectionIds,
         fileIndex,
       );
       if (codeResolved.toLowerCase() === targetId) {
-        codeLines.push(`${ref.file}:${ref.line}`);
+        codeRefs.push(`${ref.file}:${ref.line}`);
       }
     }
   }
 
-  if (mdMatches.length === 0 && codeLines.length === 0) {
-    console.error(ctx.chalk.red(`No references to "${exactMatch.id}" found`));
+  return { kind: 'found', target: exactMatch, mdRefs, codeRefs };
+}
+
+export async function refsCmd(
+  ctx: CliContext,
+  query: string,
+  scope: Scope,
+): Promise<void> {
+  const result = await findRefs(ctx.latDir, ctx.projectRoot, query, scope);
+
+  if (result.kind === 'no-match') {
+    console.error(ctx.chalk.red(`No section "${query}" found.`));
+    if (result.suggestions.length > 0) {
+      console.error(ctx.chalk.dim('\nDid you mean:\n'));
+      for (const m of result.suggestions) {
+        console.error(
+          ctx.chalk.dim('*') +
+            ' ' +
+            ctx.chalk.white(m.section.id) +
+            ' ' +
+            ctx.chalk.dim(`(${m.reason})`),
+        );
+      }
+    }
     process.exit(1);
   }
 
-  if (mdMatches.length > 0) {
+  const { target, mdRefs, codeRefs } = result;
+
+  if (mdRefs.length === 0 && codeRefs.length === 0) {
+    console.error(ctx.chalk.red(`No references to "${target.id}" found`));
+    process.exit(1);
+  }
+
+  if (mdRefs.length > 0) {
     console.log(
       formatResultList(
-        `References to "${exactMatch.id}":`,
-        mdMatches,
+        `References to "${target.id}":`,
+        mdRefs,
         ctx.projectRoot,
       ),
     );
   }
 
-  if (codeLines.length > 0) {
-    if (mdMatches.length > 0) console.log('');
+  if (codeRefs.length > 0) {
+    if (mdRefs.length > 0) console.log('');
     console.log(ctx.chalk.bold('Code references:'));
     console.log('');
-    for (const line of codeLines) {
+    for (const line of codeRefs) {
       console.log(`${ctx.chalk.dim('*')} ${line}`);
     }
   }

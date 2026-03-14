@@ -20,7 +20,7 @@ Implementation: [[src/cli/locate.ts]], matching logic in [[src/lattice.ts#findSe
 
 ## refs
 
-Find sections that reference a given section via [[parser#Wiki Links]]. Requires an exact full-path match on the query (case-insensitive). If no exact match exists, shows "Did you mean:" suggestions from fuzzy/subsection matches and exits. Outputs a [[cli#Section Preview]] for each referring section.
+Find sections that reference a given section via [[parser#Wiki Links]]. Accepts any valid section id — short-form refs (e.g. `section-parsing#Heading`) are resolved via `findSections` when `resolveRef` doesn't produce an exact match, as long as the result is unambiguous (exact, stem-expanded, or section-name match). If no confident match exists, shows "Did you mean:" suggestions and exits. Outputs a [[cli#Section Preview]] for each referring section.
 
 Usage: `lat refs <query> [--scope=md|code|md+code]`
 
@@ -30,7 +30,7 @@ Usage: `lat refs <query> [--scope=md|code|md+code]`
 - `code` — scan source files for `@lat: [[...]]` comments matching the query
 - `md+code` — both
 
-Implementation: [[src/cli/refs.ts]]
+Core logic in [[src/cli/refs.ts#findRefs]] (returns structured result), used by both the CLI command and [[cli#mcp]] `lat_refs` tool.
 
 ## check
 
@@ -172,7 +172,7 @@ Clients invoke this as `lat mcp`. The `lat init` wizard registers the MCP server
 - **lat_check** — validate links and code refs (wraps [[cli#check]])
 - **lat_refs** — find references to a section (wraps [[cli#refs]])
 
-Uses `@modelcontextprotocol/sdk` with stdio transport. Resolves `lat.md/` from cwd. Returns plain text (no color).
+Each MCP tool delegates to the same core function as the CLI command (e.g. [[src/cli/refs.ts#findRefs]], [[src/cli/search.ts#runSearch]], [[src/cli/prompt.ts#expandPrompt]]) — no duplicated logic. Uses `@modelcontextprotocol/sdk` with stdio transport. Resolves `lat.md/` from cwd. Returns plain text (no color).
 
 Implementation: [[src/mcp/server.ts]]
 
@@ -184,7 +184,7 @@ Usage: `lat search [query] [--limit=5] [--reindex]`
 
 Query is optional — `lat search --reindex` re-indexes without searching. Results include a navigation hint footer suggesting `lat locate`, `lat refs`, and `lat search` for further exploration — this makes the tools self-documenting so agents discover them organically.
 
-Implementation: [[src/cli/search.ts]], core logic in `src/search/`
+Core search logic in [[src/cli/search.ts#runSearch]] (returns matched sections), used by both the CLI command and [[cli#mcp]] `lat_search` tool. Indexing and embedding internals in `src/search/`.
 
 ### Provider Detection
 

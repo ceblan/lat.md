@@ -6,17 +6,13 @@ import {
   findLatticeDir,
   loadAllSections,
   findSections,
-  flattenSections,
-  buildFileIndex,
-  resolveRef,
-  extractRefs,
-  listLatticeFiles,
   type Section,
   type SectionMatch,
 } from '../lattice.js';
-import { scanCodeRefs } from '../code-refs.js';
 import { checkMd, checkCodeRefs, checkIndex } from '../cli/check.js';
-import { readFile } from 'node:fs/promises';
+import { findRefs, type Scope } from '../cli/refs.js';
+import { runSearch } from '../cli/search.js';
+import { expandPrompt } from '../cli/prompt.js';
 
 function formatSection(s: Section, projectRoot: string): string {
   const relPath = relative(process.cwd(), join(projectRoot, s.filePath));
@@ -49,6 +45,14 @@ function formatMatches(
   return lines.join('\n');
 }
 
+function text(t: string) {
+  return { content: [{ type: 'text' as const, text: t }] };
+}
+
+function error(t: string) {
+  return { content: [{ type: 'text' as const, text: t }], isError: true };
+}
+
 export async function startMcpServer(): Promise<void> {
   const latDir = findLatticeDir();
   if (!latDir) {
@@ -70,27 +74,11 @@ export async function startMcpServer(): Promise<void> {
       const sections = await loadAllSections(latDir);
       const matches = findSections(sections, query.replace(/^\[\[|\]\]$/g, ''));
       if (matches.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `No sections matching "${query}"`,
-            },
-          ],
-        };
+        return text(`No sections matching "${query}"`);
       }
-      return {
-        content: [
-          {
-            type: 'text' as const,
-            text: formatMatches(
-              `Sections matching "${query}":`,
-              matches,
-              projectRoot,
-            ),
-          },
-        ],
-      };
+      return text(
+        formatMatches(`Sections matching "${query}":`, matches, projectRoot),
+      );
     },
   );
 
@@ -111,68 +99,32 @@ export async function startMcpServer(): Promise<void> {
       try {
         key = getLlmKey();
       } catch (err) {
-        return {
-          content: [{ type: 'text' as const, text: (err as Error).message }],
-          isError: true,
-        };
+        return error((err as Error).message);
       }
       if (!key) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: 'No LLM key found. Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run `lat init`.',
-            },
-          ],
-          isError: true,
-        };
+        return error(
+          'No LLM key found. Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run `lat init`.',
+        );
       }
 
-      const { detectProvider } = await import('../search/provider.js');
-      const { openDb, ensureSchema, closeDb } = await import('../search/db.js');
-      const { indexSections } = await import('../search/index.js');
-      const { searchSections } = await import('../search/search.js');
+      const result = await runSearch(latDir, query, key, limit);
 
-      const provider = detectProvider(key);
-      const db = openDb(latDir);
-
-      try {
-        await ensureSchema(db, provider.dimensions);
-        await indexSections(latDir, db, provider, key);
-
-        const results = await searchSections(db, query, provider, key, limit);
-        if (results.length === 0) {
-          return {
-            content: [{ type: 'text' as const, text: 'No results found.' }],
-          };
-        }
-
-        const allSections = await loadAllSections(latDir);
-        const flat = flattenSections(allSections);
-        const byId = new Map(flat.map((s) => [s.id, s]));
-
-        const matched = results
-          .map((r) => byId.get(r.id))
-          .filter((s): s is NonNullable<typeof s> => !!s)
-          .map((s) => ({ section: s, reason: 'semantic match' }));
-
-        const text =
-          formatMatches(
-            `Search results for "${query}":`,
-            matched,
-            projectRoot,
-          ) +
-          '\n\nTo navigate further:\n' +
-          '- `lat_locate` — jump to a section by name\n' +
-          '- `lat_refs` — find what references a section\n' +
-          '- `lat_search` — search for something else';
-
-        return {
-          content: [{ type: 'text' as const, text }],
-        };
-      } finally {
-        await closeDb(db);
+      if (result.matches.length === 0) {
+        return text('No results found.');
       }
+
+      const output =
+        formatMatches(
+          `Search results for "${query}":`,
+          result.matches,
+          projectRoot,
+        ) +
+        '\n\nTo navigate further:\n' +
+        '- `lat_locate` — jump to a section by name\n' +
+        '- `lat_refs` — find what references a section\n' +
+        '- `lat_search` — search for something else';
+
+      return text(output);
     },
   );
 
@@ -180,88 +132,17 @@ export async function startMcpServer(): Promise<void> {
     'lat_prompt',
     'Expand [[refs]] in text to resolved lat.md section paths with context',
     { text: z.string().describe('Text containing [[refs]] to expand') },
-    async ({ text }) => {
-      const WIKI_LINK_RE = /\[\[([^\]]+)\]\]/g;
-      const allSections = await loadAllSections(latDir);
-
-      const refs = [...text.matchAll(WIKI_LINK_RE)];
-      if (refs.length === 0) {
-        return {
-          content: [{ type: 'text' as const, text }],
-        };
+    async ({ text: input }) => {
+      const result = await expandPrompt(latDir, projectRoot, input);
+      if (result === null) {
+        // Either no wiki links or resolution failed
+        const hasRefs = /\[\[[^\]]+\]\]/.test(input);
+        if (!hasRefs) return text(input);
+        return error(
+          'Some [[refs]] could not be resolved. Check the section names.',
+        );
       }
-
-      type ResolvedRef = {
-        target: string;
-        best: SectionMatch;
-        alternatives: SectionMatch[];
-      };
-
-      const resolved = new Map<string, ResolvedRef>();
-      const errors: string[] = [];
-
-      for (const match of refs) {
-        const target = match[1];
-        if (resolved.has(target)) continue;
-
-        const matches = findSections(allSections, target);
-        if (matches.length >= 1) {
-          resolved.set(target, {
-            target,
-            best: matches[0],
-            alternatives: matches.slice(1),
-          });
-        } else {
-          errors.push(`No section found for [[${target}]]`);
-        }
-      }
-
-      if (errors.length > 0) {
-        return {
-          content: [{ type: 'text' as const, text: errors.join('\n') }],
-          isError: true,
-        };
-      }
-
-      let output = text.replace(
-        WIKI_LINK_RE,
-        (_match: string, target: string) => {
-          const ref = resolved.get(target)!;
-          return `[[${ref.best.section.id}]]`;
-        },
-      );
-
-      output += '\n\n<lat-context>\n';
-      for (const ref of resolved.values()) {
-        const isExact =
-          ref.best.reason === 'exact match' ||
-          ref.best.reason.startsWith('file stem expanded');
-        const all = isExact ? [ref.best] : [ref.best, ...ref.alternatives];
-
-        if (isExact) {
-          output += `* [[${ref.target}]] is referring to:\n`;
-        } else {
-          output += `* [[${ref.target}]] might be referring to either of the following:\n`;
-        }
-
-        for (const m of all) {
-          const reason = isExact ? '' : ` (${m.reason})`;
-          const relPath = relative(
-            process.cwd(),
-            join(projectRoot, m.section.filePath),
-          );
-          output += `  * [[${m.section.id}]]${reason}\n`;
-          output += `    * ${relPath}:${m.section.startLine}-${m.section.endLine}\n`;
-          if (m.section.body) {
-            output += `    * ${m.section.body}\n`;
-          }
-        }
-      }
-      output += '</lat-context>\n';
-
-      return {
-        content: [{ type: 'text' as const, text: output }],
-      };
+      return text(result);
     },
   );
 
@@ -286,16 +167,11 @@ export async function startMcpServer(): Promise<void> {
 
       const totalErrors = allErrors.length + indexErrors.length;
       if (totalErrors === 0) {
-        return {
-          content: [{ type: 'text' as const, text: 'All checks passed' }],
-        };
+        return text('All checks passed');
       }
 
       lines.push(`\n${totalErrors} error${totalErrors === 1 ? '' : 's'} found`);
-      return {
-        content: [{ type: 'text' as const, text: lines.join('\n') }],
-        isError: true,
-      };
+      return error(lines.join('\n'));
     },
   );
 
@@ -311,115 +187,39 @@ export async function startMcpServer(): Promise<void> {
         .describe('Where to search: md, code, or md+code'),
     },
     async ({ query, scope }) => {
-      const allSections = await loadAllSections(latDir);
-      const flat = flattenSections(allSections);
-      const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
-      const fileIndex = buildFileIndex(allSections);
-      const { resolved } = resolveRef(query, sectionIds, fileIndex);
-      const q = resolved.toLowerCase();
-      const exactMatch = flat.find((s) => s.id.toLowerCase() === q);
+      const result = await findRefs(latDir, projectRoot, query, scope as Scope);
 
-      if (!exactMatch) {
-        const matches = findSections(allSections, query);
-        if (matches.length > 0) {
-          const suggestions = matches
+      if (result.kind === 'no-match') {
+        if (result.suggestions.length > 0) {
+          const suggestions = result.suggestions
             .map((m) => `  * ${m.section.id} (${m.reason})`)
             .join('\n');
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: `No exact section "${query}" found. Did you mean:\n${suggestions}`,
-              },
-            ],
-          };
-        }
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `No section matching "${query}"`,
-            },
-          ],
-        };
-      }
-
-      const targetId = exactMatch.id.toLowerCase();
-      const mdMatches: SectionMatch[] = [];
-      const codeLines: string[] = [];
-
-      if (scope === 'md' || scope === 'md+code') {
-        const files = await listLatticeFiles(latDir);
-        const matchingFromSections = new Set<string>();
-        for (const file of files) {
-          const content = await readFile(file, 'utf-8');
-          const fileRefs = extractRefs(file, content, projectRoot);
-          for (const ref of fileRefs) {
-            const { resolved: refResolved } = resolveRef(
-              ref.target,
-              sectionIds,
-              fileIndex,
-            );
-            if (refResolved.toLowerCase() === targetId) {
-              matchingFromSections.add(ref.fromSection.toLowerCase());
-            }
-          }
-        }
-
-        if (matchingFromSections.size > 0) {
-          const referrers = flat.filter((s) =>
-            matchingFromSections.has(s.id.toLowerCase()),
+          return text(
+            `No exact section "${query}" found. Did you mean:\n${suggestions}`,
           );
-          for (const s of referrers) {
-            mdMatches.push({ section: s, reason: 'wiki link' });
-          }
         }
+        return text(`No section matching "${query}"`);
       }
 
-      if (scope === 'code' || scope === 'md+code') {
-        const { refs: codeRefs } = await scanCodeRefs(projectRoot);
-        for (const ref of codeRefs) {
-          const { resolved: codeResolved } = resolveRef(
-            ref.target,
-            sectionIds,
-            fileIndex,
-          );
-          if (codeResolved.toLowerCase() === targetId) {
-            codeLines.push(`${ref.file}:${ref.line}`);
-          }
-        }
-      }
+      const { target, mdRefs, codeRefs } = result;
 
-      if (mdMatches.length === 0 && codeLines.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `No references to "${exactMatch.id}" found`,
-            },
-          ],
-        };
+      if (mdRefs.length === 0 && codeRefs.length === 0) {
+        return text(`No references to "${target.id}" found`);
       }
 
       const parts: string[] = [];
-      if (mdMatches.length > 0) {
+      if (mdRefs.length > 0) {
         parts.push(
-          formatMatches(
-            `References to "${exactMatch.id}":`,
-            mdMatches,
-            projectRoot,
-          ),
+          formatMatches(`References to "${target.id}":`, mdRefs, projectRoot),
         );
       }
-      if (codeLines.length > 0) {
+      if (codeRefs.length > 0) {
         parts.push(
-          'Code references:\n' + codeLines.map((l) => `* ${l}`).join('\n'),
+          'Code references:\n' + codeRefs.map((l) => `* ${l}`).join('\n'),
         );
       }
 
-      return {
-        content: [{ type: 'text' as const, text: parts.join('\n\n') }],
-      };
+      return text(parts.join('\n\n'));
     },
   );
 

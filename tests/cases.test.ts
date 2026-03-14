@@ -15,6 +15,7 @@ import {
 import { formatSectionPreview } from '../src/format.js';
 import { checkMd, checkCodeRefs, checkIndex } from '../src/cli/check.js';
 import { scanCodeRefs } from '../src/code-refs.js';
+import { findRefs } from '../src/cli/refs.js';
 
 // eslint-disable-next-line no-control-regex
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '');
@@ -540,50 +541,29 @@ describe('short-ref', () => {
   });
 
   // @lat: [[ref-resolution#Short ref refs finds md references]]
-  it('refs finds md wiki links using short query', async () => {
-    const sections = await loadAllSections(lat);
-    const flat = flattenSections(sections);
-    const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
-    const fileIndex = buildFileIndex(sections);
-
-    const { readFile } = await import('node:fs/promises');
-    const files = await listLatticeFiles(lat);
-    const allRefs = [];
-    for (const file of files) {
-      const content = await readFile(file, 'utf-8');
-      allRefs.push(...extractRefs(file, content, caseDir('short-ref')));
-    }
-
-    // The query 'setup#Install' should resolve and match the wiki link
-    const { resolved } = resolveRef('setup#Install', sectionIds, fileIndex);
-    const matching = allRefs
-      .filter((r) => {
-        const { resolved: rr } = resolveRef(r.target, sectionIds, fileIndex);
-        return rr.toLowerCase() === resolved.toLowerCase();
-      })
-      .map((r) => r.fromSection);
-
-    expect(matching).toContain('lat.md/links#Links');
+  it('findRefs with short query finds md wiki links', async () => {
+    const projectRoot = caseDir('short-ref');
+    const result = await findRefs(lat, projectRoot, 'setup#Install', 'md');
+    expect(result.kind).toBe('found');
+    if (result.kind !== 'found') return;
+    expect(result.target.id).toBe(
+      'lat.md/guides/setup#Setup#Install',
+    );
+    const ids = result.mdRefs.map((r) => r.section.id);
+    expect(ids).toContain('lat.md/links#Links');
   });
 
   // @lat: [[ref-resolution#Short ref refs finds code references]]
-  it('refs finds code refs using short query', async () => {
-    const sections = await loadAllSections(lat);
-    const flat = flattenSections(sections);
-    const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
-    const fileIndex = buildFileIndex(sections);
-
-    const projectRoot = join(lat, '..');
-    const { refs: codeRefs } = await scanCodeRefs(projectRoot);
-
-    const { resolved } = resolveRef('setup#Configure', sectionIds, fileIndex);
-    const matching = codeRefs.filter((r) => {
-      const { resolved: rr } = resolveRef(r.target, sectionIds, fileIndex);
-      return rr.toLowerCase() === resolved.toLowerCase();
-    });
-
-    expect(matching).toHaveLength(1);
-    expect(matching[0].file).toContain('app.ts');
+  it('findRefs with short query finds code refs', async () => {
+    const projectRoot = caseDir('short-ref');
+    const result = await findRefs(lat, projectRoot, 'setup#Configure', 'code');
+    expect(result.kind).toBe('found');
+    if (result.kind !== 'found') return;
+    expect(result.target.id).toBe(
+      'lat.md/guides/setup#Setup#Configure',
+    );
+    expect(result.codeRefs).toHaveLength(1);
+    expect(result.codeRefs[0]).toContain('app.ts');
   });
 });
 
@@ -613,43 +593,33 @@ describe('full-ref', () => {
   });
 
   // @lat: [[ref-resolution#Full ref refs finds md references]]
-  it('refs finds md wiki links using full query', async () => {
-    const sections = await loadAllSections(lat);
-    const flat = flattenSections(sections);
-    const sectionIds = new Set(flat.map((s) => s.id.toLowerCase()));
-    const fileIndex = buildFileIndex(sections);
-
-    const { readFile } = await import('node:fs/promises');
-    const files = await listLatticeFiles(lat);
-    const allRefs = [];
-    for (const file of files) {
-      const content = await readFile(file, 'utf-8');
-      allRefs.push(...extractRefs(file, content, caseDir('full-ref')));
-    }
-
-    const matching = allRefs
-      .filter((r) => {
-        const { resolved } = resolveRef(r.target, sectionIds, fileIndex);
-        return (
-          resolved.toLowerCase() === 'lat.md/guides/setup#setup#install'
-        );
-      })
-      .map((r) => r.fromSection);
-
-    expect(matching).toContain('lat.md/links#Links');
+  it('findRefs with full query finds md wiki links', async () => {
+    const projectRoot = caseDir('full-ref');
+    const result = await findRefs(
+      lat,
+      projectRoot,
+      'lat.md/guides/setup#Setup#Install',
+      'md',
+    );
+    expect(result.kind).toBe('found');
+    if (result.kind !== 'found') return;
+    const ids = result.mdRefs.map((r) => r.section.id);
+    expect(ids).toContain('lat.md/links#Links');
   });
 
   // @lat: [[ref-resolution#Full ref refs finds code references]]
-  it('refs finds code refs using full query', async () => {
-    const projectRoot = join(lat, '..');
-    const { refs: codeRefs } = await scanCodeRefs(projectRoot);
-
-    const matching = codeRefs.filter(
-      (r) => r.target.toLowerCase() === 'guides/setup#configure',
+  it('findRefs with full query finds code refs', async () => {
+    const projectRoot = caseDir('full-ref');
+    const result = await findRefs(
+      lat,
+      projectRoot,
+      'lat.md/guides/setup#Setup#Configure',
+      'code',
     );
-
-    expect(matching).toHaveLength(1);
-    expect(matching[0].file).toContain('app.ts');
+    expect(result.kind).toBe('found');
+    if (result.kind !== 'found') return;
+    expect(result.codeRefs).toHaveLength(1);
+    expect(result.codeRefs[0]).toContain('app.ts');
   });
 });
 
