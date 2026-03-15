@@ -723,6 +723,20 @@ describe('source-ref-ts-valid', () => {
   });
 });
 
+describe('source-ref-js-valid', () => {
+  it('resolves JS function, class, method, and const refs without errors', async () => {
+    const { errors } = await checkMd(latDir('source-ref-js-valid'));
+    expect(errors).toHaveLength(0);
+  });
+});
+
+describe('source-ref-jsx-valid', () => {
+  it('resolves JSX function, class, method, component const, and const refs without errors', async () => {
+    const { errors } = await checkMd(latDir('source-ref-jsx-valid'));
+    expect(errors).toHaveLength(0);
+  });
+});
+
 describe('source-ref-py-valid', () => {
   it('resolves Python function, class, method, and variable refs without errors', async () => {
     // docs.md links: greet (function), Greeter (class),
