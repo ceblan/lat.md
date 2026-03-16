@@ -915,6 +915,21 @@ describe('error-source-ref-c-missing', () => {
   });
 });
 
+describe('error-source-ref-unsupported-ext', () => {
+  it('check md reports unsupported extension with list of supported ones', async () => {
+    const { errors } = await checkMd(
+      latDir('error-source-ref-unsupported-ext'),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].target).toBe('src/app.blah#spam');
+    expect(errors[0].message).toContain('unsupported file extension ".blah"');
+    expect(errors[0].message).toContain('Supported:');
+    expect(errors[0].message).toContain('.ts');
+    expect(errors[0].message).toContain('.rs');
+    expect(errors[0].message).toContain('.go');
+  });
+});
+
 // --- getSection ---
 
 describe('getSection', () => {

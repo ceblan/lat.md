@@ -103,6 +103,14 @@ async function tryResolveSourceRef(
   projectRoot: string,
 ): Promise<string | null> {
   if (!isSourcePath(target)) {
+    // Check if it looks like a file path with an unsupported extension
+    const hashIdx = target.indexOf('#');
+    const filePart = hashIdx === -1 ? target : target.slice(0, hashIdx);
+    const ext = extname(filePart);
+    if (ext && hashIdx !== -1) {
+      const supported = [...SOURCE_EXTS].sort().join(', ');
+      return `broken link [[${target}]] — unsupported file extension "${ext}". Supported: ${supported}`;
+    }
     return `broken link [[${target}]] — no matching section found`;
   }
 
