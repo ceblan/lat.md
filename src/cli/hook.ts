@@ -94,6 +94,7 @@ async function handleUserPromptSubmit(): Promise<void> {
     "Before starting work, run `lat search` with one or more queries describing the user's intent.",
     'ALWAYS do this, even when the task seems straightforward — search results may reveal critical design details, protocols, or constraints.',
     'Use `lat section` to read the full content of relevant matches.',
+    'Do not read files, write code, or run commands until you have searched.',
   );
 
   const latDir = findLatticeDir();
