@@ -4,6 +4,8 @@ lat:
 ---
 # Check Index
 
+Tests for validating `lat.md/` directory index files and subdirectory index files.
+
 ## Detects missing index file
 
 Given a `lat.md/` directory with files but no index file (`lat.md`), `checkIndex` reports a missing-index error and includes a bullet-list snippet covering all visible entries.

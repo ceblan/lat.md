@@ -9,11 +9,15 @@ Tests for wiki link and code ref resolution across vault subdirectories — ambi
 
 ## Ambiguous short ref in md
 
-When two directories contain a file with the same stem (e.g. `alpha/notes.md` and `beta/notes.md`), a wiki link using just the short name `[[notes#Topic A]]` in a markdown file is flagged as ambiguous by `check md`, with an error listing both candidate full paths so the user can pick the right one.
+When two directories contain a file with the same stem (e.g. `alpha/notes.md` and `beta/notes.md`), a wiki link using just the short name `[[notes#Topic A]]` is flagged as ambiguous by `check md`.
+
+The error lists both candidate full paths so the user can pick the right one.
 
 ## Ambiguous short ref unique section
 
-When a section exists in only one of the duplicate-stem files (e.g. `Topic C` only in `alpha/notes.md`), a short ref `[[notes#Topic C]]` is still flagged as ambiguous because two files named `notes.md` exist, but the error message suggests the specific fix (`did you mean "[[alpha/notes#Topic C]]"?`) along with listing all matching file paths.
+When a section exists in only one of the duplicate-stem files (e.g. `Topic C` only in `alpha/notes.md`), a short ref `[[notes#Topic C]]` is still flagged as ambiguous because two files named `notes.md` exist.
+
+The error message suggests the specific fix (`did you mean "[[alpha/notes#Topic C]]"?`) along with listing all matching file paths.
 
 ## Ambiguous short ref in code
 

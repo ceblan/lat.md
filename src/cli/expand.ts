@@ -77,8 +77,8 @@ export async function expandPrompt(
       const reason = isExact ? '' : ` (${m.reason})`;
       output += `  * [[${m.section.id}]]${reason}\n`;
       output += `    * ${formatLocation(m.section, ctx.projectRoot)}\n`;
-      if (m.section.body) {
-        output += `    * ${m.section.body}\n`;
+      if (m.section.firstParagraph) {
+        output += `    * ${m.section.firstParagraph}\n`;
       }
     }
   }

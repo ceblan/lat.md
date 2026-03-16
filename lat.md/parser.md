@@ -24,13 +24,15 @@ Each section has:
 - `filePath` — project-root-relative file path with extension (e.g. `lat.md/dev-process.md`, `src/config.ts`)
 - `children` — nested subsections forming a tree
 - `startLine` / `endLine` — source positions
-- `body` — first paragraph text (used by [[cli#Section Preview]])
+- `firstParagraph` — first paragraph text (used by [[cli#Section Preview]])
 
 [[markdown#Frontmatter]] is stripped before parsing.
 
 ## Short Ref Resolution
 
-References can use just the file name (without directory path) when the name is unique across the vault. For example, `[[search#Provider Detection]]` resolves to `lat.md/tests/search#Search Tests#Provider Detection` if there's only one `search.md` in the vault. If multiple files share the same name, the full path is required — `lat check` reports ambiguous refs as errors. Short refs only work for markdown files in `lat.md/`; source code references always require the full path.
+References can use just the file name (without directory path) when the name is unique across the vault. Short refs only work for markdown files in `lat.md/`; source code references always require the full path.
+
+For example, `[[search#Provider Detection]]` resolves to `lat.md/tests/search#Search Tests#Provider Detection` if there's only one `search.md` in the vault. If multiple files share the same name, the full path is required — `lat check` reports ambiguous refs as errors.
 
 The root (h1) heading can be omitted in references: `[[backend#CORS]]` resolves to `lat.md/backend#Backend#CORS` because the h1 heading is implicit from the file. Both `resolveRef()` and `findSections()` handle this by trying to insert root headings when a direct match fails.
 

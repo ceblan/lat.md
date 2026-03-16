@@ -4,6 +4,8 @@ lat:
 ---
 # Check Code Refs
 
+Tests for validating `@lat:` code references and required code mention coverage.
+
 ## Detects dangling code ref
 
 Given a source file with `@lat: [[Nonexistent]]`, [[cli#check#code-refs]] should report it as pointing to a nonexistent section.

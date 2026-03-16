@@ -743,7 +743,7 @@ export function sourceSymbolsToSections(
       children: [],
       startLine: sym.startLine,
       endLine: sym.endLine,
-      body: sym.signature,
+      firstParagraph: sym.signature,
     };
     sections.push(section);
 
@@ -768,7 +768,7 @@ export function sourceSymbolsToSections(
       children: [],
       startLine: sym.startLine,
       endLine: sym.endLine,
-      body: sym.signature,
+      firstParagraph: sym.signature,
     };
     parentSection.children.push(section);
   }

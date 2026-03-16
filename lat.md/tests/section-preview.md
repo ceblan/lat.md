@@ -4,10 +4,12 @@ lat:
 ---
 # Section Preview Formatting
 
-## Formats section with body
+Tests for formatting section previews for terminal output via [[cli#Section Preview]].
 
-Verify [[cli#Section Preview]] output includes section id, file path with line range, and indented body text.
+## Formats section with firstParagraph
 
-## Formats section without body
+Verify [[cli#Section Preview]] output includes section id, file path with line range, and indented first paragraph text.
 
-Verify [[cli#Section Preview]] omits the body lines when a section has no paragraph content.
+## Formats section without firstParagraph
+
+Verify [[cli#Section Preview]] omits the first paragraph line when a section has no paragraph content.

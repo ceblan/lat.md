@@ -145,8 +145,8 @@ export function formatSectionOutput(
   if (outgoingRefs.length > 0) {
     parts.push('', s.bold('This section references:'), '');
     for (const ref of outgoingRefs) {
-      const body = ref.resolved.body
-        ? ` ${s.dim('—')} ${truncate(ref.resolved.body, 120)}`
+      const body = ref.resolved.firstParagraph
+        ? ` ${s.dim('—')} ${truncate(ref.resolved.firstParagraph, 120)}`
         : '';
       parts.push(
         `${s.dim('*')} [[${formatSectionId(ref.resolved.id, s)}]]${body}`,
@@ -157,8 +157,8 @@ export function formatSectionOutput(
   if (incomingRefs.length > 0) {
     parts.push('', s.bold('Referenced by:'), '');
     for (const ref of incomingRefs) {
-      const body = ref.section.body
-        ? ` ${s.dim('—')} ${truncate(ref.section.body, 120)}`
+      const body = ref.section.firstParagraph
+        ? ` ${s.dim('—')} ${truncate(ref.section.firstParagraph, 120)}`
         : '';
       parts.push(
         `${s.dim('*')} [[${formatSectionId(ref.section.id, s)}]]${body}`,

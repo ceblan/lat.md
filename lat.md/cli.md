@@ -38,7 +38,9 @@ Core logic in [[src/cli/section.ts#getSection]] (returns structured result), use
 
 ## refs
 
-Find sections that reference a given section via [[parser#Wiki Links]]. Accepts any valid section id — short-form refs (e.g. `section-parsing#Heading`) are resolved via `findSections` when `resolveRef` doesn't produce an exact match, as long as the result is unambiguous (exact, stem-expanded, or section-name match). If no confident match exists, shows "Did you mean:" suggestions and exits. Outputs a [[cli#Section Preview]] for each referring section.
+Find sections that reference a given section via [[parser#Wiki Links]]. Outputs a [[cli#Section Preview]] for each referring section.
+
+Accepts any valid section id — short-form refs (e.g. `section-parsing#Heading`) are resolved via `findSections` when `resolveRef` doesn't produce an exact match, as long as the result is unambiguous (exact, stem-expanded, or section-name match). If no confident match exists, shows "Did you mean:" suggestions and exits.
 
 Usage: `lat refs <query> [--scope=md|code|md+code]`
 
@@ -54,7 +56,7 @@ Core logic in [[src/cli/refs.ts#findRefs]] (returns structured result), used by 
 
 Validation command group. Runs all checks when invoked without a subcommand.
 
-Usage: `lat check [md|code-refs|index]`
+Usage: `lat check [md|code-refs|index|sections]`
 
 Implementation: [[src/cli/check.ts]]
 
@@ -68,9 +70,20 @@ Two validations:
 1. Every `// @lat: [[...]]` or `# @lat: [[...]]` comment in source code must point to a real section in `lat.md/`
 2. For files with [[markdown#Frontmatter#require-code-mention]], every leaf section must be referenced by at least one `// @lat:` comment in the codebase
 
+### sections
+
+Validate that every section has a well-formed leading paragraph. Two checks:
+
+1. **Missing leading paragraph** — every section must have at least one paragraph before its first child heading. Sections with only headings and no prose are errors.
+2. **Overly long leading paragraph** — the first paragraph must be ≤250 characters (excluding `[[wiki link]]` content). This guarantees the section's essence fits in search chunks and command output without truncation.
+
+The character count strips all `[[...]]` wiki link syntax before measuring, so long link targets don't penalize the count.
+
 ### index
 
-Validate directory index files. Every directory inside `lat.md/` (including the root) must have an index file named after the directory (e.g. `lat.md/lat.md` for the root, `lat.md/api/api.md` for a subdirectory). Each index file must contain a bullet list covering every visible file and subdirectory with a one-sentence description, using wiki links: `- [[name]] — description`. File entries omit the `.md` extension (e.g. `[[cli]]` not `[[cli.md]]`).
+Validate directory index files. Every directory inside `lat.md/` (including the root) must have an index file named after the directory with a bullet list of its contents.
+
+Each index file must contain a bullet list covering every visible file and subdirectory with a one-sentence description, using wiki links: `- [[name]] — description`. File entries omit the `.md` extension (e.g. `[[cli]]` not `[[cli.md]]`). Root example: `lat.md/lat.md`; subdirectory example: `lat.md/api/api.md`.
 
 Three checks:
 1. **Missing index file** — errors with a ready-to-copy bullet list snippet
@@ -122,6 +135,8 @@ Steps:
 
 ### Claude Code
 
+Sets up `CLAUDE.md` and two agent hooks for the Claude Code coding agent.
+
 - `CLAUDE.md` — written directly from the template (not a symlink)
 - Two hooks registered in `.claude/settings.json`, both calling [[cli#hook]]:
   - `UserPromptSubmit` → `lat hook claude UserPromptSubmit` — injects lat.md workflow reminders, auto-resolves `[[refs]]` in the prompt
@@ -131,10 +146,14 @@ Steps:
 
 ### Cursor
 
+Sets up `.cursor/rules` and registers the MCP server for Cursor.
+
 - `.cursor/rules/lat.md` — rules file generated from `templates/cursor-rules.md`, references MCP tools instead of CLI commands
 - [[cli#mcp]] server registered in `.cursor/mcp.json` (added to `.gitignore` since it contains absolute paths)
 
 ### VS Code Copilot
+
+Sets up `copilot-instructions.md` and registers the MCP server for VS Code Copilot.
 
 - `.github/copilot-instructions.md` — static instructions file
 - [[cli#mcp]] server registered in `.vscode/mcp.json`
@@ -176,7 +195,9 @@ Reads the hook input from stdin (JSON with `user_prompt`). Outputs JSON with `ad
 
 ### Stop
 
-Blocks the agent from stopping (`decision: "block"`) with a `reason` reminding it to update `lat.md/` and run `lat check` before finishing. Only fires when a `lat.md/` directory exists in the project. Reads `stop_hook_active` from the hook input to avoid blocking twice — if the agent was already continued by a previous block, the hook exits silently to prevent an infinite loop.
+Blocks the agent from stopping (`decision: "block"`) with a `reason` reminding it to update `lat.md/` and run `lat check` before finishing. Only fires when a `lat.md/` directory exists in the project.
+
+Reads `stop_hook_active` from the hook input to avoid blocking twice — if the agent was already continued by a previous block, the hook exits silently to prevent an infinite loop.
 
 Implementation: [[src/cli/hook.ts]]
 
@@ -244,7 +265,7 @@ Implementation: [[src/search/db.ts]]
 
 ### Indexing
 
-Sections are extracted via `loadAllSections()` + `flattenSections()`. For each section, the raw markdown between `startLine` and `endLine` is read (not just the `body` first-paragraph) for richer semantic signal.
+Sections are extracted via `loadAllSections()` + `flattenSections()`. For each section, the raw markdown between `startLine` and `endLine` is read (not just `firstParagraph`) for richer semantic signal.
 
 Content freshness is tracked via SHA-256 hashes. On each run:
 1. Parse all sections, compute hashes
@@ -270,7 +291,7 @@ Shared output format used by [[cli#locate]], [[cli#refs]], and [[cli#search]]. E
 2. Section id in `[[wiki link]]` syntax (path segments dimmed, final segment bold)
 3. Match reason in parentheses (e.g. `(exact match)`, `(section name match)`, `(fuzzy match, distance 2)`)
 4. "Defined in" label with file path (cyan) and line range
-5. Body text quoted with `>` (first paragraph, truncated at 200 chars)
+5. Body text quoted with `>` (first paragraph, guaranteed ≤250 chars by [[cli#check#sections]])
 
 Commands that return multiple results use `formatResultList()` which adds a bold header and consistent spacing.
 

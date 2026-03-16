@@ -20,7 +20,9 @@ Aligned with Obsidian conventions:
 
 ### Short Path Disambiguation
 
-Short refs are supported for markdown files inside `lat.md/` only. When a file stem is unique across the vault, it can be used without its directory prefix. For example, `[[setup#Install]]` resolves to `lat.md/guides/setup#Install` if `setup.md` only exists under `lat.md/guides/`.
+Short refs are supported for markdown files inside `lat.md/` only. When a file stem is unique across the vault, it can be used without its directory prefix.
+
+For example, `[[setup#Install]]` resolves to `lat.md/guides/setup#Install` if `setup.md` only exists under `lat.md/guides/`.
 
 When multiple files share the same stem (e.g. `alpha/notes.md` and `beta/notes.md`), the short form is ambiguous — [[cli#check#md]] reports an error listing all candidates. If the referenced section exists in only one file, the error suggests the specific fix.
 
@@ -54,6 +56,14 @@ Source code is parsed lazily with tree-sitter (via `web-tree-sitter`). Only file
 **Strict** — `lat check` and `lat refs` use `resolveRef()` directly. Links must resolve unambiguously to a known section. Ambiguous or broken links are errors.
 
 **Lenient** — `lat locate` and `lat expand` use `findSections()`, which applies tiered matching (exact → file stem → subsection tail → fuzzy). These commands are for interactive exploration and accept approximate queries.
+
+## Leading Paragraph
+
+Every section must have a leading paragraph — at least one sentence immediately after the heading, before any child headings.
+
+The first paragraph must be ≤250 characters (excluding `[[wiki link]]` content). It serves as the section's overview for search results, command output, and RAG context. Subsequent paragraphs can go into detail.
+
+Validated by [[cli#check#sections]].
 
 ## Frontmatter
 

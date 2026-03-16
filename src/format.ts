@@ -28,12 +28,8 @@ export function formatSectionPreview(
     `  ${s.dim('Defined in')} ${s.cyan(relPath)}${s.dim(`:${section.startLine}-${section.endLine}`)}`,
   ];
 
-  if (section.body) {
-    const truncated =
-      section.body.length > 200
-        ? section.body.slice(0, 200) + '...'
-        : section.body;
-    lines.push('', `  ${s.dim('>')} ${truncated}`);
+  if (section.firstParagraph) {
+    lines.push('', `  ${s.dim('>')} ${section.firstParagraph}`);
   }
 
   return lines.join('\n');

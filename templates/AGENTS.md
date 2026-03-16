@@ -57,7 +57,7 @@ Tokens past their expiry timestamp are rejected with 401, even if otherwise vali
 Login request without a password field returns 400 with a descriptive error.
 ```
 
-Every section MUST have a description — at least one sentence explaining what the test verifies and why. Empty sections with just a heading are not acceptable.
+Every section MUST have a description — at least one sentence explaining what the test verifies and why. Empty sections with just a heading are not acceptable. (This is a specific case of the general leading paragraph rule below.)
 
 Each test in code should reference its spec with exactly one comment placed next to the relevant test — not at the top of the file:
 
@@ -72,3 +72,27 @@ def test_handles_missing_password():
 ```
 
 Do not duplicate refs. One `@lat:` comment per spec section, placed at the test that covers it. `lat check` will flag any spec section not covered by a code reference, and any code reference pointing to a nonexistent section.
+
+# Section structure
+
+Every section in `lat.md/` **must** have a leading paragraph — at least one sentence immediately after the heading, before any child headings or other block content. The first paragraph must be ≤250 characters (excluding `[[wiki link]]` content). This paragraph serves as the section's overview and is used in search results, command output, and RAG context — keeping it concise guarantees the section's essence is always captured.
+
+```markdown
+# Good Section
+
+Brief overview of what this section documents and why it matters.
+
+More detail can go in subsequent paragraphs, code blocks, or lists.
+
+## Child heading
+...
+```
+
+```markdown
+# Bad Section
+
+## Child heading
+...
+```
+
+The second example is invalid because `Bad Section` has no leading paragraph. `lat check` validates this rule and reports errors for missing or overly long leading paragraphs.

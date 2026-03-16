@@ -4,6 +4,8 @@ lat:
 ---
 # Ref Extraction
 
+Tests for extracting wiki link references from parsed markdown files.
+
 ## Extracts wiki link references
 
 Parse a file containing [[parser#Wiki Links]] and verify `extractRefs` returns correct targets, enclosing section ids, file stems, and line numbers.

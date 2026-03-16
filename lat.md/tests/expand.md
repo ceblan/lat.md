@@ -4,6 +4,8 @@ lat:
 ---
 # Expand
 
+Tests for the `lat expand` command that resolves `[[refs]]` and appends context blocks.
+
 ## Resolves exact ref with context
 
 When the input contains a `[[ref]]` that exactly matches a section, the output replaces it with the resolved id inline and appends a `<lat-context>` block with `is referring to:` phrasing and the section's location and body.

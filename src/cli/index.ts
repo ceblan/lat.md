@@ -119,6 +119,15 @@ check
     handleResult(await checkIndexCommand(ctx));
   });
 
+check
+  .command('sections')
+  .description('Validate section leading paragraphs in lat.md')
+  .action(async () => {
+    const ctx = resolveContext(program.opts());
+    const { checkSectionsCommand } = await import('./check.js');
+    handleResult(await checkSectionsCommand(ctx));
+  });
+
 async function runExpand(
   text: string | undefined,
   opts: { stdin?: boolean },

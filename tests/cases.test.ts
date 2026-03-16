@@ -14,7 +14,12 @@ import {
 } from '../src/lattice.js';
 import { formatSectionPreview } from '../src/format.js';
 import { plainStyler, type CmdContext } from '../src/context.js';
-import { checkMd, checkCodeRefs, checkIndex } from '../src/cli/check.js';
+import {
+  checkMd,
+  checkCodeRefs,
+  checkIndex,
+  checkSections,
+} from '../src/cli/check.js';
 import { scanCodeRefs } from '../src/code-refs.js';
 import { findRefs } from '../src/cli/refs.js';
 import { getSection, formatSectionOutput } from '../src/cli/section.js';
@@ -63,8 +68,8 @@ describe('basic-project', () => {
     expect(ids).toContain('lat.md/notes#Notes#Second Topic');
   });
 
-  // @lat: [[section-parsing#Populates position and body fields]]
-  it('populates startLine, endLine, and body', async () => {
+  // @lat: [[section-parsing#Populates position and firstParagraph fields]]
+  it('populates startLine, endLine, and firstParagraph', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
 
@@ -73,31 +78,31 @@ describe('basic-project', () => {
     )!;
     expect(running.startLine).toBe(5);
     expect(running.endLine).toBe(8);
-    expect(running.body).toBe('Run tests with vitest.');
+    expect(running.firstParagraph).toBe('Run tests with vitest.');
 
     const formatting = flat.find(
       (s) => s.id === 'lat.md/dev-process#Dev Process#Formatting',
     )!;
     expect(formatting.startLine).toBe(9);
-    expect(formatting.body).toBe('Prettier all the things.');
+    expect(formatting.firstParagraph).toBe('Prettier all the things.');
   });
 
-  // @lat: [[section-parsing#Renders inline code in body]]
-  it('renders inline code in body text', async () => {
+  // @lat: [[section-parsing#Renders inline code in firstParagraph]]
+  it('renders inline code in firstParagraph', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
     const first = flat.find((s) => s.id === 'lat.md/notes#Notes#First Topic')!;
-    expect(first.body).toBe('Run `vitest` to test.');
+    expect(first.firstParagraph).toBe('Run `vitest` to test.');
   });
 
-  // @lat: [[section-parsing#Renders wiki links in body]]
-  it('renders wiki links in body text', async () => {
+  // @lat: [[section-parsing#Renders wiki links in firstParagraph]]
+  it('renders wiki links in firstParagraph', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
     const second = flat.find(
       (s) => s.id === 'lat.md/notes#Notes#Second Topic',
     )!;
-    expect(second.body).toBe('See [[dev-process#Testing]] for more.');
+    expect(second.firstParagraph).toBe('See [[dev-process#Testing]] for more.');
   });
 
   // @lat: [[ref-extraction#Extracts wiki link references]]
@@ -124,8 +129,8 @@ describe('basic-project', () => {
     expect(refs).toHaveLength(0);
   });
 
-  // @lat: [[section-preview#Formats section with body]]
-  it('formats section preview with body', async () => {
+  // @lat: [[section-preview#Formats section with firstParagraph]]
+  it('formats section preview with firstParagraph', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
     const running = flat.find(
@@ -144,8 +149,8 @@ describe('basic-project', () => {
     expect(lines[3]).toContain('> Run tests with vitest.');
   });
 
-  // @lat: [[section-preview#Formats section without body]]
-  it('formats section preview without body', async () => {
+  // @lat: [[section-preview#Formats section without firstParagraph]]
+  it('formats section preview without firstParagraph', async () => {
     const sections = await loadAllSections(lat);
     const flat = flattenSections(sections);
     const testing = flat.find(
@@ -1031,5 +1036,40 @@ describe('getSection', () => {
     expect(output).toContain('See [[dev-process#Testing]]');
     expect(output).toContain('This section references:');
     expect(output).toContain('lat.md/dev-process#Dev Process#Testing');
+  });
+});
+
+// --- check sections ---
+
+describe('error-missing-body', () => {
+  // @lat: [[check-sections#Detects missing leading paragraph]]
+  it('check sections detects sections without a leading paragraph', async () => {
+    const errors = await checkSections(latDir('error-missing-body'));
+    const missing = errors.filter((e) =>
+      e.message.includes('has no leading paragraph'),
+    );
+    expect(missing).toHaveLength(2);
+    expect(missing[0].target).toBe('lat.md/notes#Notes');
+    expect(missing[1].target).toBe('lat.md/notes#Notes#First');
+  });
+});
+
+describe('error-long-body', () => {
+  // @lat: [[check-sections#Detects overly long leading paragraph]]
+  it('check sections detects overly long leading paragraph', async () => {
+    const errors = await checkSections(latDir('error-long-body'));
+    expect(errors).toHaveLength(1);
+    expect(errors[0].target).toBe('lat.md/notes#Notes');
+    expect(errors[0].message).toContain('384 characters');
+    expect(errors[0].message).toContain('max 250');
+  });
+
+  // @lat: [[check-sections#Excludes wiki link content from character count]]
+  it('excludes wiki link content from character count', async () => {
+    const errors = await checkSections(latDir('error-long-body'));
+    const linkSection = errors.find(
+      (e) => e.target === 'lat.md/notes#Notes#With Links',
+    );
+    expect(linkSection).toBeUndefined();
   });
 });

@@ -4,6 +4,8 @@ lat:
 ---
 # Locate
 
+Tests for `findSections` covering exact, subsection, and fuzzy matching strategies.
+
 ## Finds sections by exact id
 
 Given a full section path query (case-insensitive), `findSections` returns the matching section with correct metadata.

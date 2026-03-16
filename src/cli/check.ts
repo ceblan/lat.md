@@ -380,6 +380,60 @@ export async function checkIndex(latticeDir: string): Promise<IndexError[]> {
   return errors;
 }
 
+// --- Section structure validation ---
+
+/** Max characters for the first paragraph of a section (excluding [[wiki links]]). */
+const MAX_BODY_LENGTH = 250;
+
+/** Count body text length excluding `[[...]]` wiki link markers and content. */
+function bodyTextLength(body: string): number {
+  return body.replace(/\[\[[^\]]*\]\]/g, '').length;
+}
+
+export async function checkSections(latticeDir: string): Promise<CheckError[]> {
+  const projectRoot = dirname(latticeDir);
+  const files = await listLatticeFiles(latticeDir);
+  const errors: CheckError[] = [];
+
+  for (const file of files) {
+    const content = await readFile(file, 'utf-8');
+    const sections = parseSections(file, content, projectRoot);
+    const flat = flattenSections(sections);
+    const relPath = relative(process.cwd(), file);
+
+    for (const section of flat) {
+      if (!section.firstParagraph) {
+        errors.push({
+          file: relPath,
+          line: section.startLine,
+          target: section.id,
+          message:
+            `section "${section.id}" has no leading paragraph. ` +
+            `Every section must start with a brief overview (≤${MAX_BODY_LENGTH} chars) ` +
+            `summarizing what it documents — this powers search snippets and command output.`,
+        });
+        continue;
+      }
+
+      const len = bodyTextLength(section.firstParagraph);
+      if (len > MAX_BODY_LENGTH) {
+        errors.push({
+          file: relPath,
+          line: section.startLine,
+          target: section.id,
+          message:
+            `section "${section.id}" leading paragraph is ${len} characters ` +
+            `(max ${MAX_BODY_LENGTH}, excluding [[wiki links]]). ` +
+            `Keep the first paragraph brief — it serves as the section's summary ` +
+            `in search results and command output. Use subsequent paragraphs for details.`,
+        });
+      }
+    }
+  }
+
+  return errors;
+}
+
 // --- Formatting helpers (shared by all check commands) ---
 
 function formatFileStats(files: FileStats, s: Styler): string {
@@ -427,6 +481,7 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
   const md = await checkMd(ctx.latDir);
   const code = await checkCodeRefs(ctx.latDir);
   const indexErrors = await checkIndex(ctx.latDir);
+  const sectionErrors = await checkSections(ctx.latDir);
 
   const allErrors = [...md.errors, ...code.errors];
   const allFiles: FileStats = { ...md.files };
@@ -439,8 +494,10 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
 
   lines.push(...formatCheckErrors(allErrors, s));
   lines.push(...formatCheckIndexErrors(indexErrors, s));
+  lines.push(...formatCheckErrors(sectionErrors, s));
 
-  const totalErrors = allErrors.length + indexErrors.length;
+  const totalErrors =
+    allErrors.length + indexErrors.length + sectionErrors.length;
   if (totalErrors > 0) {
     lines.push(formatErrorCount(totalErrors, s));
     return { output: lines.join('\n'), isError: true };
@@ -515,5 +572,23 @@ export async function checkIndexCommand(ctx: CmdContext): Promise<CmdResult> {
   }
 
   lines.push(s.green('index: All directory index files OK'));
+  return { output: lines.join('\n') };
+}
+
+export async function checkSectionsCommand(
+  ctx: CmdContext,
+): Promise<CmdResult> {
+  const errors = await checkSections(ctx.latDir);
+  const s = ctx.styler;
+  const lines: string[] = [];
+
+  lines.push(...formatCheckErrors(errors, s));
+
+  if (errors.length > 0) {
+    lines.push(formatErrorCount(errors.length, s));
+    return { output: lines.join('\n'), isError: true };
+  }
+
+  lines.push(s.green('sections: All sections have valid leading paragraphs'));
   return { output: lines.join('\n') };
 }

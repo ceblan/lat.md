@@ -12,7 +12,9 @@ Unit tests (always run). Verify `detectProvider` correctly identifies OpenAI (`s
 
 ## RAG Replay Tests
 
-Functional tests that exercise the full pipeline — indexing, hashing, vector insert, KNN search — using a replay server (`tests/rag-replay-server.ts`) instead of a real embedding API. Test fixture lives in `tests/cases/rag/lat.md/` with pre-recorded vectors in `tests/cases/rag/replay-data/`.
+Functional tests that exercise the full RAG pipeline using a replay server instead of a real embedding API.
+
+The test covers indexing, hashing, vector insert, and KNN search via `tests/rag-replay-server.ts`. Test fixture lives in `tests/cases/rag/lat.md/` with pre-recorded vectors in `tests/cases/rag/replay-data/`.
 
 The replay server has two modes:
 - **Replay** (default `pnpm test`): serves cached vectors from binary replay data. Matches requests by SHA-256 of input text.

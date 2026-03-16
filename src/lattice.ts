@@ -16,7 +16,7 @@ export type Section = {
   children: Section[];
   startLine: number;
   endLine: number;
-  body: string;
+  firstParagraph: string;
 };
 
 export type Ref = {
@@ -134,7 +134,7 @@ export function parseSections(
       children: [],
       startLine,
       endLine: 0,
-      body: '',
+      firstParagraph: '',
     };
 
     if (parent) {
@@ -157,7 +157,7 @@ export function parseSections(
     }
   }
 
-  // Extract body: first paragraph after each heading
+  // Extract firstParagraph: first paragraph after each heading
   const children = tree.children;
   let headingIdx = 0;
   for (let i = 0; i < children.length; i++) {
@@ -167,7 +167,7 @@ export function parseSections(
       for (let j = i + 1; j < children.length; j++) {
         if (children[j].type === 'heading') break;
         if (children[j].type === 'paragraph') {
-          flat[headingIdx].body = inlineText(
+          flat[headingIdx].firstParagraph = inlineText(
             children[j] as unknown as { children: RootContent[] },
           );
           break;
