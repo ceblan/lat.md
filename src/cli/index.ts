@@ -199,8 +199,13 @@ program
 
 program
   .command('gen')
-  .description('Generate a file to stdout (agents.md, claude.md)')
-  .argument('<target>', 'file to generate: agents.md or claude.md')
+  .description(
+    'Generate a file to stdout (agents.md, claude.md, cursor-rules.md)',
+  )
+  .argument(
+    '<target>',
+    'file to generate: agents.md, claude.md, cursor-rules.md',
+  )
   .action(async (target: string) => {
     const { genCmd } = await import('./gen.js');
     await genCmd(target);

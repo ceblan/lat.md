@@ -47,7 +47,12 @@ lat:
 ---
 # Tests
 
+Authentication and authorization test specifications.
+
 ## User login
+
+Verify credential validation and error handling for the login endpoint.
+
 ### Rejects expired tokens
 Tokens past their expiry timestamp are rejected with 401, even if otherwise valid.
 

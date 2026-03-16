@@ -15,6 +15,7 @@ import {
 import { scanCodeRefs } from '../code-refs.js';
 import { walkEntries } from '../walk.js';
 import type { CmdContext, CmdResult, Styler } from '../context.js';
+import { INIT_VERSION, readInitVersion } from '../init-version.js';
 
 export type CheckError = {
   file: string;
@@ -491,6 +492,30 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
 
   const s = ctx.styler;
   const lines: string[] = [formatFileStats(allFiles, s)];
+
+  // Init version warning first — user should fix setup before addressing errors
+  const storedVersion = readInitVersion(ctx.latDir);
+  if (storedVersion === null) {
+    lines.push(
+      '',
+      s.yellow('Warning:') +
+        ' No init version recorded — run ' +
+        s.cyan('lat init') +
+        ' to set up agent hooks and configuration.',
+    );
+  } else if (storedVersion < INIT_VERSION) {
+    lines.push(
+      '',
+      s.yellow('Warning:') +
+        ' Your setup is outdated (v' +
+        storedVersion +
+        ' → v' +
+        INIT_VERSION +
+        '). Re-run ' +
+        s.cyan('lat init') +
+        ' to update agent hooks and configuration.',
+    );
+  }
 
   lines.push(...formatCheckErrors(allErrors, s));
   lines.push(...formatCheckIndexErrors(indexErrors, s));

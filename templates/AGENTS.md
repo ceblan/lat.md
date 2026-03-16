@@ -49,7 +49,12 @@ lat:
 ---
 # Tests
 
+Authentication and authorization test specifications.
+
 ## User login
+
+Verify credential validation and error handling for the login endpoint.
+
 ### Rejects expired tokens
 Tokens past their expiry timestamp are rejected with 401, even if otherwise valid.
 
@@ -85,14 +90,16 @@ Brief overview of what this section documents and why it matters.
 More detail can go in subsequent paragraphs, code blocks, or lists.
 
 ## Child heading
-...
+
+Details about this child topic.
 ```
 
 ```markdown
 # Bad Section
 
 ## Child heading
-...
+
+Details about this child topic.
 ```
 
 The second example is invalid because `Bad Section` has no leading paragraph. `lat check` validates this rule and reports errors for missing or overly long leading paragraphs.

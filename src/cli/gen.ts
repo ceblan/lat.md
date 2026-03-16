@@ -12,10 +12,18 @@ export function readCursorRulesTemplate(): string {
 
 export async function genCmd(target: string): Promise<void> {
   const normalized = target.toLowerCase();
-  if (normalized !== 'agents.md' && normalized !== 'claude.md') {
-    console.error(`Unknown target: ${target}. Supported: agents.md, claude.md`);
-    process.exit(1);
+  switch (normalized) {
+    case 'agents.md':
+    case 'claude.md':
+      process.stdout.write(readAgentsTemplate());
+      break;
+    case 'cursor-rules.md':
+      process.stdout.write(readCursorRulesTemplate());
+      break;
+    default:
+      console.error(
+        `Unknown target: ${target}. Supported: agents.md, claude.md, cursor-rules.md`,
+      );
+      process.exit(1);
   }
-
-  process.stdout.write(readAgentsTemplate());
 }
