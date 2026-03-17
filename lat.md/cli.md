@@ -22,13 +22,13 @@ Implementation: [[src/cli/locate.ts]], matching logic in [[src/lattice.ts#findSe
 
 ## section
 
-Show a section's full content along with its outgoing and incoming wiki link references. Designed as a companion to [[cli#search]] — search gives RAG results, `section` facilitates browsing them by showing the full context of each result.
+Show a section's full content including all subsections, along with outgoing and incoming wiki link references. Companion to [[cli#search]] — search gives RAG results, `section` lets you browse them by showing the full context of each result.
 
 Accepts any valid section id (short-form, full-path, with or without `[[brackets]]`). Uses the same resolution logic as [[cli#refs]].
 
 Output:
 1. Section header with id and file location
-2. Section content blockquoted (`>`) between `startLine` and `endLine`
+2. Section content blockquoted (`>`) from `startLine` through the end of the last descendant subsection
 3. **This section references** — all wiki link targets found within the section, with body descriptions
 4. **Referenced by** — other sections in `lat.md/` that contain wiki links pointing to this section
 5. **Navigation hints** — same footer as [[cli#search]], suggesting `lat section` and `lat search` as next steps

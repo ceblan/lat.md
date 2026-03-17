@@ -56,13 +56,12 @@ export async function getSection(
 
   const section = top.section;
 
-  // Read raw content between startLine and endLine
+  // Read raw content between startLine and the end of the last descendant
   const absPath = join(ctx.projectRoot, section.filePath);
   const fileContent = await readFile(absPath, 'utf-8');
   const lines = fileContent.split('\n');
-  const content = lines
-    .slice(section.startLine - 1, section.endLine)
-    .join('\n');
+  const end = fullEndLine(section);
+  const content = lines.slice(section.startLine - 1, end).join('\n');
 
   // Find outgoing wiki link targets within this section's content
   const flat = flattenSections(allSections);
@@ -115,6 +114,11 @@ export async function getSection(
   }
 
   return { kind: 'found', section, content, outgoingRefs, incomingRefs };
+}
+
+function fullEndLine(section: Section): number {
+  if (section.children.length === 0) return section.endLine;
+  return fullEndLine(section.children[section.children.length - 1]);
 }
 
 function truncate(s: string, max: number): string {
