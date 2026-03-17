@@ -1,10 +1,13 @@
-import { dirname } from 'node:path';
+import { execSync } from 'node:child_process';
+import { dirname, extname } from 'node:path';
 import { findLatticeDir } from '../lattice.js';
 import { plainStyler, type CmdContext } from '../context.js';
 import { expandPrompt } from './expand.js';
 import { runSearch } from './search.js';
 import { getSection, formatSectionOutput } from './section.js';
 import { getLlmKey } from '../config.js';
+import { checkMd, checkCodeRefs, checkIndex, checkSections } from './check.js';
+import { SOURCE_EXTENSIONS } from '../source-parser.js';
 
 function outputPromptSubmit(context: string): void {
   process.stdout.write(
@@ -95,6 +98,8 @@ async function handleUserPromptSubmit(): Promise<void> {
     'ALWAYS do this, even when the task seems straightforward — search results may reveal critical design details, protocols, or constraints.',
     'Use `lat section` to read the full content of relevant matches.',
     'Do not read files, write code, or run commands until you have searched.',
+    '',
+    'Remember: `lat.md/` must stay in sync with the codebase. If you change code, update the relevant sections in `lat.md/` and run `lat check` before finishing.',
   );
 
   const latDir = findLatticeDir();
@@ -139,8 +144,50 @@ async function handleUserPromptSubmit(): Promise<void> {
   outputPromptSubmit(parts.join('\n'));
 }
 
+/** Minimum diff size (in lines) to consider "significant" code change. */
+/** Minimum code change size (lines) before we consider flagging lat.md/ sync. */
+const DIFF_THRESHOLD = 5;
+
+/** lat.md/ changes below this ratio of code changes trigger a sync reminder. */
+const LATMD_RATIO = 0.05;
+
+/** Run `git diff --numstat` and return { codeLines, latMdLines }. */
+function analyzeDiff(projectRoot: string): {
+  codeLines: number;
+  latMdLines: number;
+} {
+  let output: string;
+  try {
+    output = execSync('git diff HEAD --numstat', {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+    });
+  } catch {
+    return { codeLines: 0, latMdLines: 0 };
+  }
+
+  let codeLines = 0;
+  let latMdLines = 0;
+
+  // Each line: "added\tremoved\tfile" (e.g. "42\t11\tsrc/cli/hook.ts")
+  for (const line of output.split('\n')) {
+    const parts = line.split('\t');
+    if (parts.length < 3) continue;
+    const added = parseInt(parts[0], 10) || 0;
+    const removed = parseInt(parts[1], 10) || 0;
+    const file = parts[2];
+    const changed = added + removed;
+    if (file.startsWith('lat.md/')) {
+      latMdLines += changed;
+    } else if (SOURCE_EXTENSIONS.has(extname(file))) {
+      codeLines += changed;
+    }
+  }
+
+  return { codeLines, latMdLines };
+}
+
 async function handleStop(): Promise<void> {
-  // Only emit the reminder if we're in a project with lat.md
   const latDir = findLatticeDir();
   if (!latDir) return;
 
@@ -154,17 +201,67 @@ async function handleStop(): Promise<void> {
     // If we can't parse stdin, treat as first attempt
   }
 
-  // Don't block twice — avoids infinite loop
-  if (stopHookActive) return;
+  // Always run lat check — even on second pass
+  const md = await checkMd(latDir);
+  const code = await checkCodeRefs(latDir);
+  const indexErrors = await checkIndex(latDir);
+  const sectionErrors = await checkSections(latDir);
+  const totalErrors =
+    md.errors.length +
+    code.errors.length +
+    indexErrors.length +
+    sectionErrors.length;
+  const checkFailed = totalErrors > 0;
+
+  // Second pass — warn the user but don't block again
+  if (stopHookActive) {
+    if (checkFailed) {
+      console.error(
+        `lat check is still failing (${totalErrors} error(s)). Run \`lat check\` to see details.`,
+      );
+    }
+    return;
+  }
+
+  const projectRoot = dirname(latDir);
+
+  // Analyze git diff — flag when lat.md/ changes are < 5% of code changes
+  const { codeLines, latMdLines } = analyzeDiff(projectRoot);
+  let needsSync = false;
+  if (codeLines >= DIFF_THRESHOLD) {
+    // Round up lat.md lines to 1 if there are more than 5 code lines changed
+    // (a tiny lat.md touch still counts as effort)
+    const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);
+    needsSync = effectiveLatMd < codeLines * LATMD_RATIO;
+  }
+
+  // Nothing to do — let the agent stop cleanly
+  if (!checkFailed && !needsSync) return;
 
   const parts: string[] = [];
 
-  parts.push(
-    'Before finishing, verify:',
-    '- Did you update `lat.md/`? Run `lat search` with a query describing what you changed to find relevant sections that may need updating.',
-    '- Did you run `lat check` and confirm all links and code refs pass?',
-    'If you made code changes but did not update lat.md/, do that now.',
-  );
+  if (checkFailed && needsSync) {
+    parts.push(
+      '`lat check` found errors AND the codebase has changes (' +
+        codeLines +
+        ' lines) with no updates to `lat.md/`. Before finishing:',
+      '',
+      '1. Update `lat.md/` to reflect your code changes — run `lat search` to find relevant sections.',
+      '2. Run `lat check` until it passes.',
+    );
+  } else if (checkFailed) {
+    parts.push(
+      '`lat check` found ' +
+        totalErrors +
+        ' error(s). Run `lat check`, fix the errors, and repeat until it passes.',
+    );
+  } else {
+    parts.push(
+      'The codebase has changes (' +
+        codeLines +
+        ' lines) but `lat.md/` was not updated. Update `lat.md/` to be in sync with the changes — run `lat search` to find relevant sections. Run `lat check` at the end.',
+    );
+  }
 
   outputStop(parts.join('\n'));
 }

@@ -198,14 +198,19 @@ Currently supports `claude` agent with two events:
 Reads the hook input from stdin (JSON with `user_prompt`). Outputs JSON with `additionalContext` containing:
 
 1. A directive to ALWAYS run `lat search` on the user's intent before starting work — even for seemingly straightforward tasks — because search may reveal critical design details, protocols, or constraints. Includes a hard gate: do not read files, write code, or run commands until search is done.
-2. If the prompt contains `[[refs]]`, resolves them inline using [[src/cli/expand.ts#expandPrompt]]
-3. Runs [[src/cli/search.ts#runSearch]] on the user prompt, then [[src/cli/section.ts#getSection]] + [[src/cli/section.ts#formatSectionOutput]] on each result — the agent gets full section content with outgoing/incoming refs before it starts work. Gracefully degrades if no LLM key is configured.
+2. A reminder that `lat.md/` must stay in sync with the codebase — update relevant sections and run `lat check` before finishing.
+3. If the prompt contains `[[refs]]`, resolves them inline using [[src/cli/expand.ts#expandPrompt]]
+4. Runs [[src/cli/search.ts#runSearch]] on the user prompt, then [[src/cli/section.ts#getSection]] + [[src/cli/section.ts#formatSectionOutput]] on each result — the agent gets full section content with outgoing/incoming refs before it starts work. Gracefully degrades if no LLM key is configured.
 
 ### Stop
 
-Blocks the agent from stopping (`decision: "block"`) with a `reason` reminding it to update `lat.md/` and run `lat check` before finishing. Only fires when a `lat.md/` directory exists in the project.
+Conditionally blocks the agent from stopping — only when something is actually wrong.
 
-Reads `stop_hook_active` from the hook input to avoid blocking twice — if the agent was already continued by a previous block, the hook exits silently to prevent an infinite loop.
+1. **No `lat.md/` dir** — exit silently.
+2. **Run `lat check`** — always, on both first and second pass.
+3. **Second pass** (`stop_hook_active` true) — if check still fails, print warning to stderr (no block, loop stops). If check passes, exit silently.
+4. **First pass** — run `git diff HEAD --numstat`. Count `codeLines` (files matching [[src/source-parser.ts#SOURCE_EXTENSIONS]]) and `latMdLines`. If `codeLines < 5`, skip ratio check. Otherwise round `latMdLines` up to 1 (if nonzero) and flag `needsSync` when `latMdLines < codeLines * 5%`.
+5. **Decision** — both pass: exit silently, clean output. Check failed + needs sync: block ("update `lat.md/`, then run `lat check` until it passes"). Check failed only: block ("run `lat check` until it passes"). Needs sync only: block ("update `lat.md/`, run `lat check` at the end").
 
 Implementation: [[src/cli/hook.ts]]
 

@@ -48,18 +48,26 @@ async function ensureParser(): Promise<Parser> {
   return parserInstance;
 }
 
+/** Extension → tree-sitter WASM grammar mapping. This is the single source of
+ *  truth for which source file extensions lat supports. */
+const grammarMap: Record<string, string> = {
+  '.ts': 'tree-sitter-typescript.wasm',
+  '.tsx': 'tree-sitter-tsx.wasm',
+  '.js': 'tree-sitter-javascript.wasm',
+  '.jsx': 'tree-sitter-javascript.wasm',
+  '.py': 'tree-sitter-python.wasm',
+  '.rs': 'tree-sitter-rust.wasm',
+  '.go': 'tree-sitter-go.wasm',
+  '.c': 'tree-sitter-c.wasm',
+  '.h': 'tree-sitter-c.wasm',
+};
+
+/** All source file extensions that lat can parse (derived from grammarMap). */
+export const SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(
+  Object.keys(grammarMap),
+);
+
 async function getLanguage(ext: string): Promise<Language | null> {
-  const grammarMap: Record<string, string> = {
-    '.ts': 'tree-sitter-typescript.wasm',
-    '.tsx': 'tree-sitter-tsx.wasm',
-    '.js': 'tree-sitter-javascript.wasm',
-    '.jsx': 'tree-sitter-javascript.wasm',
-    '.py': 'tree-sitter-python.wasm',
-    '.rs': 'tree-sitter-rust.wasm',
-    '.go': 'tree-sitter-go.wasm',
-    '.c': 'tree-sitter-c.wasm',
-    '.h': 'tree-sitter-c.wasm',
-  };
   const wasmFile = grammarMap[ext];
   if (!wasmFile) return null;
 

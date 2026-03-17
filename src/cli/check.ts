@@ -13,6 +13,7 @@ import {
   type Section,
 } from '../lattice.js';
 import { scanCodeRefs } from '../code-refs.js';
+import { SOURCE_EXTENSIONS } from '../source-parser.js';
 import { walkEntries } from '../walk.js';
 import type { CmdContext, CmdResult, Styler } from '../context.js';
 import { INIT_VERSION, readInitVersion } from '../init-version.js';
@@ -75,24 +76,11 @@ function countByExt(paths: string[]): FileStats {
   return stats;
 }
 
-/** Source file extensions recognized for code wiki links. */
-const SOURCE_EXTS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.py',
-  '.rs',
-  '.go',
-  '.c',
-  '.h',
-]);
-
 function isSourcePath(target: string): boolean {
   const hashIdx = target.indexOf('#');
   const filePart = hashIdx === -1 ? target : target.slice(0, hashIdx);
   const ext = extname(filePart);
-  return SOURCE_EXTS.has(ext);
+  return SOURCE_EXTENSIONS.has(ext);
 }
 
 /**
@@ -109,7 +97,7 @@ async function tryResolveSourceRef(
     const filePart = hashIdx === -1 ? target : target.slice(0, hashIdx);
     const ext = extname(filePart);
     if (ext && hashIdx !== -1) {
-      const supported = [...SOURCE_EXTS].sort().join(', ');
+      const supported = [...SOURCE_EXTENSIONS].sort().join(', ');
       return `broken link [[${target}]] — unsupported file extension "${ext}". Supported: ${supported}`;
     }
     return `broken link [[${target}]] — no matching section found`;
