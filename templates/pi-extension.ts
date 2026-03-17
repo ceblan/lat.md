@@ -1,5 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { keyHint } from "@mariozechner/pi-coding-agent";
+import { Box, Text } from "@mariozechner/pi-tui";
 
 /** Absolute path to the lat binary, injected by `lat init`. */
 const LAT = "__LAT_BIN__";
@@ -144,6 +146,39 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "text", text: output || "No references found." }],
       };
     },
+  });
+
+  // ── Message renderers ────────────────────────────────────────────
+
+  pi.registerMessageRenderer("lat-reminder", (message, { expanded }, theme) => {
+    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+    if (expanded) {
+      box.addChild(new Text(theme.fg("accent", "lat.md") + " " + message.content, 0, 0));
+    } else {
+      const hint = keyHint("expandTools", "to expand");
+      box.addChild(new Text(
+        theme.fg("accent", "lat.md") + " " +
+        theme.fg("dim", `Search lat.md before starting work. Keep lat.md/ in sync. (${hint})`),
+        0, 0,
+      ));
+    }
+    return box;
+  });
+
+  pi.registerMessageRenderer("lat-check", (message, { expanded }, theme) => {
+    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
+    if (expanded) {
+      box.addChild(new Text(theme.fg("warning", "lat check") + " " + message.content, 0, 0));
+    } else {
+      const hint = keyHint("expandTools", "to expand");
+      const firstLine = message.content.split("\n")[0];
+      box.addChild(new Text(
+        theme.fg("warning", "lat check") + " " +
+        theme.fg("dim", `${firstLine} (${hint})`),
+        0, 0,
+      ));
+    }
+    return box;
   });
 
   // ── Lifecycle hooks ────────────────────────────────────────────────
