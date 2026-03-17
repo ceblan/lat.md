@@ -8,7 +8,9 @@ const LAT = "__LAT_BIN__";
 
 function run(args: string[], cwd?: string): string {
   const { execSync } = require("child_process") as typeof import("child_process");
-  return execSync(`${LAT} ${args.join(" ")}`, {
+  // When LAT points to a .ts source file (dev install), run it through tsx.
+  const cmd = LAT.endsWith(".ts") ? `npx tsx ${LAT}` : LAT;
+  return execSync(`${cmd} ${args.join(" ")}`, {
     cwd: cwd ?? process.cwd(),
     encoding: "utf-8",
     timeout: 30_000,
