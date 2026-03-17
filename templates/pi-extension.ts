@@ -49,6 +49,13 @@ export default function (pi: ExtensionAPI) {
         content: [{ type: "text", text: output || "No results found." }],
       };
     },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat search ")) +
+        theme.fg("dim", `"${args.query}"`),
+        0, 0,
+      );
+    },
   });
 
   pi.registerTool({
@@ -71,6 +78,13 @@ export default function (pi: ExtensionAPI) {
         ],
       };
     },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat section ")) +
+        theme.fg("dim", `"${args.query}"`),
+        0, 0,
+      );
+    },
   });
 
   pi.registerTool({
@@ -89,6 +103,13 @@ export default function (pi: ExtensionAPI) {
           { type: "text", text: output || "No sections matching query." },
         ],
       };
+    },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat locate ")) +
+        theme.fg("dim", `"${args.query}"`),
+        0, 0,
+      );
     },
   });
 
@@ -111,6 +132,12 @@ export default function (pi: ExtensionAPI) {
         };
       }
     },
+    renderCall(_args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat check")),
+        0, 0,
+      );
+    },
   });
 
   pi.registerTool({
@@ -127,6 +154,14 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: output || params.text }],
       };
+    },
+    renderCall(args, theme) {
+      const preview = args.text.length > 60 ? args.text.slice(0, 60) + "…" : args.text;
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat expand ")) +
+        theme.fg("dim", `"${preview}"`),
+        0, 0,
+      );
     },
   });
 
@@ -145,6 +180,13 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: output || "No references found." }],
       };
+    },
+    renderCall(args, theme) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("lat refs ")) +
+        theme.fg("dim", `"${args.query}"`),
+        0, 0,
+      );
     },
   });
 
