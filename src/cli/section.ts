@@ -12,7 +12,7 @@ import {
   type SectionMatch,
 } from '../lattice.js';
 import { scanCodeRefs } from '../code-refs.js';
-import { SOURCE_EXTENSIONS } from '../source-parser.js';
+import { SOURCE_EXTENSIONS, resolveSourceSymbol } from '../source-parser.js';
 import type { CmdContext, CmdResult } from '../context.js';
 import { formatSectionId, formatNavHints } from '../format.js';
 
@@ -24,6 +24,9 @@ export type CodeBackRef = {
 
 export type SourceRef = {
   target: string;
+  file: string;
+  line: number;
+  snippet: string;
 };
 
 export type SectionFound = {
@@ -97,7 +100,45 @@ export async function getSection(
       const targetLower = ref.target.toLowerCase();
       if (!seen.has(targetLower)) {
         seen.add(targetLower);
-        outgoingSourceRefs.push({ target: ref.target });
+        const symbolPart = hashIdx === -1 ? '' : ref.target.slice(hashIdx + 1);
+        let line = 0;
+        let snippet = '';
+        if (symbolPart) {
+          const { found, symbols } = await resolveSourceSymbol(
+            filePart,
+            symbolPart,
+            ctx.projectRoot,
+          );
+          if (found) {
+            const parts = symbolPart.split('#');
+            const sym = symbols.find((s) =>
+              parts.length === 1
+                ? s.name === parts[0] && !s.parent
+                : s.name === parts[1] && s.parent === parts[0],
+            );
+            if (sym) {
+              line = sym.startLine;
+              try {
+                const src = await readFile(
+                  join(ctx.projectRoot, filePart),
+                  'utf-8',
+                );
+                const srcLines = src.split('\n');
+                const start = Math.max(0, sym.startLine - 1 - 2);
+                const end = Math.min(srcLines.length, sym.startLine - 1 + 3);
+                snippet = srcLines.slice(start, end).join('\n');
+              } catch {
+                // file unreadable
+              }
+            }
+          }
+        }
+        outgoingSourceRefs.push({
+          target: ref.target,
+          file: filePart,
+          line,
+          snippet,
+        });
       }
       continue;
     }
@@ -229,7 +270,16 @@ export function formatSectionOutput(
       );
     }
     for (const ref of outgoingSourceRefs) {
-      parts.push(`${s.dim('*')} [[${s.cyan(ref.target)}]]`);
+      const loc = ref.line
+        ? `${s.dim(` (${ref.file}:${ref.line})`)}`
+        : `${s.dim(` (${ref.file})`)}`;
+      parts.push(`${s.dim('*')} [[${s.cyan(ref.target)}]]${loc}`);
+      if (ref.snippet) {
+        const snippetLines = ref.snippet.split('\n');
+        for (const line of snippetLines) {
+          parts.push(`  ${s.dim('|')} ${line}`);
+        }
+      }
     }
   }
 
