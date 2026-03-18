@@ -636,26 +636,11 @@ async function setupPi(
 async function setupLlmKey(
   rl: ReturnType<typeof createInterface> | null,
 ): Promise<void> {
-  // Check env var first
-  const envKey = process.env.LAT_LLM_KEY;
-  if (envKey) {
+  // Use the centralized key resolution (env var → file → helper → config)
+  const existingKey = getLlmKey();
+  if (existingKey) {
     console.log('');
-    console.log(
-      chalk.green('Semantic search') + ' — LAT_LLM_KEY is set. Ready.',
-    );
-    return;
-  }
-
-  // Check existing config
-  const config = readConfig();
-  const configPath = getConfigPath();
-  if (config.llm_key) {
-    console.log('');
-    console.log(
-      chalk.green('Semantic search') +
-        ' — LLM key configured in ' +
-        chalk.dim(configPath),
-    );
+    console.log(chalk.green('Semantic search') + ' — LLM key found. Ready.');
     return;
   }
 
@@ -745,9 +730,9 @@ async function setupLlmKey(
   }
 
   // Save to config
-  const updatedConfig = { ...config, llm_key: key };
+  const updatedConfig = { ...readConfig(), llm_key: key };
   writeConfig(updatedConfig);
-  console.log(chalk.green('  Key saved') + ' to ' + chalk.dim(configPath));
+  console.log(chalk.green('  Key saved') + ' to ' + chalk.dim(getConfigPath()));
 }
 
 // ── Main init flow ───────────────────────────────────────────────────
