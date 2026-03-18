@@ -113,11 +113,33 @@ function resolveLatBin(): string {
   return script;
 }
 
+// ── Command style ───────────────────────────────────────────────────
+
+type LatCommandStyle = 'global' | 'local' | 'npx';
+
+/** Return the lat binary string for the given command style. */
+function latBinString(style: LatCommandStyle): string {
+  if (style === 'global') return 'lat';
+  if (style === 'npx') return 'npx lat.md@latest';
+  return resolveLatBin();
+}
+
+/** Return the MCP server command descriptor for the given command style. */
+function styledMcpCommand(style: LatCommandStyle): {
+  command: string;
+  args: string[];
+} {
+  if (style === 'global') return { command: 'lat', args: ['mcp'] };
+  if (style === 'npx')
+    return { command: 'npx', args: ['lat.md@latest', 'mcp'] };
+  return mcpCommand();
+}
+
 // ── Claude Code helpers ──────────────────────────────────────────────
 
-/** Derive the hook command prefix from the currently running binary. */
-function latHookCommand(event: string): string {
-  return `${resolveLatBin()} hook claude ${event}`;
+/** Derive the hook command prefix for the given command style. */
+function latHookCommand(style: LatCommandStyle, event: string): string {
+  return `${latBinString(style)} hook claude ${event}`;
 }
 
 type HookEntry = { hooks?: { type?: string; command?: string }[] };
@@ -140,7 +162,7 @@ function isLatHookEntry(entry: HookEntry): boolean {
  * Remove all lat-owned hook entries from settings, then add fresh ones.
  * Preserves any non-lat hooks the user may have configured.
  */
-function syncLatHooks(settingsPath: string): void {
+function syncLatHooks(settingsPath: string, style: LatCommandStyle): void {
   let settings: Record<string, unknown> = {};
   if (existsSync(settingsPath)) {
     const raw = readFileSync(settingsPath, 'utf-8');
@@ -175,7 +197,7 @@ function syncLatHooks(settingsPath: string): void {
       hooks[event] = [];
     }
     (hooks[event] as unknown[]).push({
-      hooks: [{ type: 'command', command: latHookCommand(event) }],
+      hooks: [{ type: 'command', command: latHookCommand(style, event) }],
     });
   }
 
@@ -293,7 +315,11 @@ function hasMcpServer(configPath: string, key: string): boolean {
   }
 }
 
-function addMcpServer(configPath: string, key: string): void {
+function addMcpServer(
+  configPath: string,
+  key: string,
+  style: LatCommandStyle,
+): void {
   let cfg: McpConfig = { [key]: {} };
   if (existsSync(configPath)) {
     const raw = readFileSync(configPath, 'utf-8');
@@ -305,7 +331,7 @@ function addMcpServer(configPath: string, key: string): void {
     }
   }
 
-  cfg[key].lat = mcpCommand();
+  cfg[key].lat = styledMcpCommand(style);
 
   mkdirSync(join(configPath, '..'), { recursive: true });
   writeFileSync(configPath, JSON.stringify(cfg, null, 2) + '\n');
@@ -405,6 +431,7 @@ async function setupClaudeCode(
   template: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
+  style: LatCommandStyle,
 ): Promise<void> {
   // CLAUDE.md — written directly (not a symlink)
   const hash = await writeTemplateFile(
@@ -432,7 +459,7 @@ async function setupClaudeCode(
   const settingsPath = join(claudeDir, 'settings.json');
 
   mkdirSync(claudeDir, { recursive: true });
-  syncLatHooks(settingsPath);
+  syncLatHooks(settingsPath, style);
   console.log(chalk.green('  Hooks') + ' synced (UserPromptSubmit + Stop)');
 
   // Ensure .claude is gitignored (settings contain local absolute paths)
@@ -455,7 +482,7 @@ async function setupClaudeCode(
   if (hasMcpServer(mcpPath, 'mcpServers')) {
     console.log(chalk.green('  MCP server') + ' already configured');
   } else {
-    addMcpServer(mcpPath, 'mcpServers');
+    addMcpServer(mcpPath, 'mcpServers', style);
     console.log(chalk.green('  MCP server') + ' registered in .mcp.json');
   }
 
@@ -468,6 +495,7 @@ async function setupCursor(
   latDir: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
+  style: LatCommandStyle,
 ): Promise<void> {
   // .cursor/rules/lat.md
   const hash = await writeTemplateFile(
@@ -499,7 +527,7 @@ async function setupCursor(
   if (hasMcpServer(mcpPath, 'mcpServers')) {
     console.log(chalk.green('  MCP server') + ' already configured');
   } else {
-    addMcpServer(mcpPath, 'mcpServers');
+    addMcpServer(mcpPath, 'mcpServers', style);
     console.log(
       chalk.green('  MCP server') + ' registered in .cursor/mcp.json',
     );
@@ -520,6 +548,7 @@ async function setupCopilot(
   latDir: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
+  style: LatCommandStyle,
 ): Promise<void> {
   // .github/copilot-instructions.md
   const hash = await writeTemplateFile(
@@ -551,7 +580,7 @@ async function setupCopilot(
   if (hasMcpServer(mcpPath, 'servers')) {
     console.log(chalk.green('  MCP server') + ' already configured');
   } else {
-    addMcpServer(mcpPath, 'servers');
+    addMcpServer(mcpPath, 'servers', style);
     console.log(
       chalk.green('  MCP server') + ' registered in .vscode/mcp.json',
     );
@@ -563,6 +592,7 @@ async function setupPi(
   latDir: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
+  style: LatCommandStyle,
 ): Promise<void> {
   // AGENTS.md — Pi reads this natively
   // (already created in the shared step if any non-Claude agent is selected)
@@ -582,7 +612,7 @@ async function setupPi(
 
   const template = readPiExtensionTemplate().replace(
     '__LAT_BIN__',
-    resolveLatBin(),
+    latBinString(style),
   );
 
   const hash = await writeTemplateFile(
@@ -815,6 +845,29 @@ export async function initCmd(targetDir?: string): Promise<void> {
     const useCodex = selectedAgents.includes('codex');
 
     const anySelected = selectedAgents.length > 0;
+    const needsLatCommand = useClaudeCode || usePi || useCursor || useCopilot;
+
+    // Step 2b: How should agents run lat?
+    let commandStyle: LatCommandStyle = 'local';
+    if (anySelected && needsLatCommand && interactive) {
+      console.log('');
+      const localBin = resolveLatBin();
+      const styleOptions: SelectOption[] = [
+        { label: 'lat', value: 'global' },
+        { label: localBin, value: 'local' },
+        { label: 'npx lat.md@latest', value: 'npx' },
+      ];
+      const styleChoice = await selectMenu(
+        styleOptions,
+        'How should agents run lat?',
+        0,
+      );
+      if (!styleChoice) {
+        console.log('Aborted.');
+        return;
+      }
+      commandStyle = styleChoice as LatCommandStyle;
+    }
 
     // Now that selectMenu is done, it's safe to create the readline interface.
     // selectMenu has restored stdin to its original state (paused, non-raw).
@@ -849,25 +902,32 @@ export async function initCmd(targetDir?: string): Promise<void> {
     if (useClaudeCode) {
       console.log('');
       console.log(chalk.bold('Setting up Claude Code...'));
-      await setupClaudeCode(root, latDir, template, fileHashes, ask);
+      await setupClaudeCode(
+        root,
+        latDir,
+        template,
+        fileHashes,
+        ask,
+        commandStyle,
+      );
     }
 
     if (usePi) {
       console.log('');
       console.log(chalk.bold('Setting up Pi...'));
-      await setupPi(root, latDir, fileHashes, ask);
+      await setupPi(root, latDir, fileHashes, ask, commandStyle);
     }
 
     if (useCursor) {
       console.log('');
       console.log(chalk.bold('Setting up Cursor...'));
-      await setupCursor(root, latDir, fileHashes, ask);
+      await setupCursor(root, latDir, fileHashes, ask, commandStyle);
     }
 
     if (useCopilot) {
       console.log('');
       console.log(chalk.bold('Setting up VS Code Copilot...'));
-      await setupCopilot(root, latDir, fileHashes, ask);
+      await setupCopilot(root, latDir, fileHashes, ask, commandStyle);
     }
 
     if (useCodex) {
