@@ -189,7 +189,7 @@ export default function Home() {
               { v: '0.7', text: <>Multi-language source links (Rust, Go, C); <Cmd>lat section</Cmd> and <Cmd>lat expand</Cmd> commands; section structure validation</> },
               { v: '0.6', text: <>Source code wiki links — reference functions and classes directly from specs: <Cmd>{'[[src/foo.ts#myFunc]]'}</Cmd></> },
               { v: '0.5', text: <>Auto-suggest <Cmd>lat init</Cmd> when no <Cmd>lat.md/</Cmd> found; section IDs now include h1 heading</> },
-            ].map(({ v, text }, i, arr) => {
+            ].slice(0, 5).map(({ v, text }, i, arr) => {
               const t = 1 - i / arr.length
               const textColor = `rgb(${Math.round(100 + 36 * t)}, ${Math.round(100 + 36 * t)}, ${Math.round(100 + 36 * t)})`
               const versionColor = `rgb(${Math.round(55 + 30 * t)}, ${Math.round(55 + 30 * t)}, ${Math.round(55 + 30 * t)})`

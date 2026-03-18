@@ -8,4 +8,4 @@ Completely separate from the npm package — has its own `package.json`, `tsconf
 
 Black page with centered monospace ASCII art logo (inlined — Vercel can't access `templates/`).
 
-Includes a "What's New" changelog (versions 0.5–0.9) with a text-brightness gradient — newest entries are lighter, older ones fade darker.
+Includes a "What's New" changelog showing only the 5 most recent versions. Text-brightness gradient fades older entries darker. When adding a new version, drop the oldest entry to keep the count at 5.
