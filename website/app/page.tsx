@@ -1,13 +1,3 @@
-const logo = `\
-░██             ░██                                ░██
-░██             ░██                                ░██
-░██  ░██████  ░██████       ░█████████████   ░████████
-░██       ░██   ░██         ░██   ░██   ░██ ░██    ░██
-░██  ░███████   ░██         ░██   ░██   ░██ ░██    ░██
-░██ ░██   ░██   ░██         ░██   ░██   ░██ ░██   ░███
-░██  ░█████░██   ░███  ░██  ░██   ░██   ░██  ░█████░██
-`
-
 function Cmd({ children }: { children: React.ReactNode }) {
   return (
     <span
@@ -60,24 +50,22 @@ export default function Home() {
       }}
     >
       {/* Logo */}
-      <pre
-        className="nosel"
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.svg"
+        alt="lat.md"
         style={{
-          fontSize: 'clamp(6px, 1.8vw, 15px)',
-          lineHeight: 1.2,
-          letterSpacing: '0.05em',
-          margin: 0,
-          color: '#ddd',
+          width: '100%',
+          maxWidth: '55ch',
+          height: 'auto',
         }}
-      >
-        {logo}
-      </pre>
+      />
 
       {/* Tagline */}
       <p
         style={{
           color: '#999',
-          fontSize: 18,
+          fontSize: 14,
           textAlign: 'center',
           margin: 0,
           maxWidth: '44ch',
