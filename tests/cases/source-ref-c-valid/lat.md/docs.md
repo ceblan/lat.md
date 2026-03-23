@@ -37,3 +37,9 @@ Preproc-if function: [[src/app.h#extra_func]].
 Struct field (pointer): [[src/app.h#Greeter#prefix]].
 
 Struct field (plain): [[src/app.h#Greeter#count]].
+
+Named enum value (qualified): [[src/app.h#Color#GREEN]].
+
+Typedef-enum value (qualified): [[src/app.h#JSGCObjectTypeEnum#JS_GC_OBJ_TYPE_FUNCTION_BYTECODE]].
+
+Named typedef-enum value (qualified): [[src/app.h#JSPromiseStateEnum#JS_PROMISE_PENDING]].

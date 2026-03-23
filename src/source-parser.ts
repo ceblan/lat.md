@@ -635,7 +635,7 @@ function collectCNodes(parent: SyntaxNode, symbols: SourceSymbol[]): void {
           signature: firstLine(node.text),
         });
       }
-      collectCEnumMembers(node, symbols);
+      collectCEnumMembers(node, symbols, name ?? undefined);
     } else if (node.type === 'type_definition') {
       let declarator = node.childForFieldName('declarator');
       // Unwrap pointer_declarator for pointer typedefs
@@ -656,7 +656,11 @@ function collectCNodes(parent: SyntaxNode, symbols: SourceSymbol[]): void {
       }
       for (const child of node.namedChildren) {
         if (child.type === 'enum_specifier') {
-          collectCEnumMembers(child, symbols);
+          collectCEnumMembers(
+            child,
+            symbols,
+            name ?? extractName(child) ?? undefined,
+          );
         } else if (child.type === 'struct_specifier' && name) {
           collectCStructFields(child, name, symbols);
         }
@@ -724,6 +728,7 @@ function collectCNodes(parent: SyntaxNode, symbols: SourceSymbol[]): void {
 function collectCEnumMembers(
   enumSpecifier: SyntaxNode,
   symbols: SourceSymbol[],
+  enumName?: string,
 ): void {
   for (const child of enumSpecifier.namedChildren) {
     if (child.type !== 'enumerator_list') continue;
@@ -731,13 +736,19 @@ function collectCEnumMembers(
       if (enumerator.type !== 'enumerator') continue;
       const name = extractName(enumerator);
       if (!name) continue;
-      symbols.push({
+      const sym: SourceSymbol = {
         name,
         kind: 'const',
         startLine: enumerator.startPosition.row + 1,
         endLine: enumerator.endPosition.row + 1,
         signature: firstLine(enumerator.text),
-      });
+      };
+      // Emit without parent (standalone lookup like #GREEN)
+      symbols.push(sym);
+      // Also emit with parent so #Color#GREEN works
+      if (enumName) {
+        symbols.push({ ...sym, parent: enumName });
+      }
     }
   }
 }
