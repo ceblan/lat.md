@@ -17,13 +17,19 @@
 
 Compress the knowledge about your program domain into a **graph** — a set of interconnected markdown files that live in a `lat.md/` directory at the root of your project. Sections link to each other with `[[wiki links]]`, source files link back with `// @lat:` comments, and `lat check` ensures nothing drifts out of sync.
 
-The result is a structured knowledge base that:
+High-level knowledge is expressed in concise markdown files cross-linked with `[[...]]` wiki syntax. Markdown files link into the codebase (`[[src/auth.ts#validateToken]]`), and source files link back (`// @lat: [[section-id]]`).
 
-- 📈 **Scales** — split knowledge across as many files and sections as you need
-- 🔗 **Cross-references** — wiki links (`[[cli#search#Indexing]]`) connect concepts into a navigable graph
-- ✅ **Stays in sync** — `lat check` validates that all links resolve and that required code references exist
-- 🔍 **Is searchable** — exact, fuzzy, and semantic (vector) search across all sections
-- 🤝 **Works for humans and machines** — readable in any editor (or Obsidian), queryable by agents via the `lat` CLI
+**Faster coding for agents** — instead of grepping through your codebase, agents search the knowledge graph to discover key design decisions, constraints, and domain context fast and consistently.
+
+**Faster workflow for humans** — your agents maintain lat files for you. When you review a diff, start with the semantic changes in `lat.md/` to understand *what* changed and *why*. Reviewing code becomes the secondary task.
+
+The `lat` CLI gives agents and humans a system to navigate and maintain the graph:
+
+- **`lat init`** — sets up popular coding agents with hooks and instructions for using lat
+- **`lat check`** — enforces referential consistency; agents call it automatically before finishing work
+- **`lat search`** and **`lat section`** — agents use these to understand your prompts and navigate the graph instead of endless `grep` calls
+
+`lat` is a workflow that comes with tools — build pre-commit hooks and GitHub bots, run CI tasks that improve the knowledge graph in the background.
 
 ## Install
 
