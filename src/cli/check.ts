@@ -554,7 +554,7 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
         ' No LLM key found — semantic search (lat search) will not work.' +
         ' Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run ' +
         s.cyan('lat init') +
-        ' to configure.',
+        ' to configure. For local models, use LAT_LLM_KEY=ollama:model-name.',
     );
   }
 

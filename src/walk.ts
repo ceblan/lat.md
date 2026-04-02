@@ -12,7 +12,7 @@ import walk from 'ignore-walk';
 export function walkEntries(dir: string): Promise<string[]> {
   return walk({
     path: dir,
-    ignoreFiles: ['.gitignore'],
+    ignoreFiles: ['.gitignore', '.ignore'],
   }).then((entries: string[]) =>
     entries.filter((e: string) => !e.startsWith('.git/') && !e.startsWith('.')),
   );
