@@ -943,40 +943,6 @@ describe('error-source-ref-c-missing', () => {
   });
 });
 
-// --- source-ref-php-valid ---
-
-describe('source-ref-php-valid', () => {
-  it('check md passes for valid PHP source refs', async () => {
-    const { errors } = await checkMd(latDir('source-ref-php-valid'));
-    expect(errors).toHaveLength(0);
-  });
-});
-
-describe('error-source-ref-php-missing', () => {
-  it('check md reports all missing PHP symbols', async () => {
-    const { errors } = await checkMd(latDir('error-source-ref-php-missing'));
-    expect(errors).toHaveLength(4);
-
-    const byTarget = new Map(errors.map((e) => [e.target, e]));
-
-    const fn = byTarget.get('src/app.php#nonexistent')!;
-    expect(fn).toBeDefined();
-    expect(fn.message).toContain('symbol "nonexistent" not found');
-
-    const cls = byTarget.get('src/app.php#MissingClass')!;
-    expect(cls).toBeDefined();
-    expect(cls.message).toContain('symbol "MissingClass" not found');
-
-    const method = byTarget.get('src/app.php#Greeter#missing')!;
-    expect(method).toBeDefined();
-    expect(method.message).toContain('symbol "Greeter#missing" not found');
-
-    const nested = byTarget.get('src/app.php#Missing#method')!;
-    expect(nested).toBeDefined();
-    expect(nested.message).toContain('symbol "Missing#method" not found');
-  });
-});
-
 describe('error-source-ref-unsupported-ext', () => {
   it('check md reports unsupported extension with list of supported ones', async () => {
     const { errors } = await checkMd(

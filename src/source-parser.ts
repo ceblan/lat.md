@@ -8,6 +8,7 @@ import {
   type Node as SyntaxNode,
   type Tree,
 } from 'web-tree-sitter';
+import { extractPhpSymbols } from './source-parsers/php.js';
 
 export type SourceSymbol = {
   name: string;
@@ -837,121 +838,18 @@ function firstLine(text: string): string {
   return nl === -1 ? text : text.slice(0, nl);
 }
 
-function extractPhpClassMembers(
-  classNode: SyntaxNode,
-  className: string,
-  symbols: SourceSymbol[],
-): void {
-  const body =
-    classNode.namedChildren.find((c) => c.type === 'declaration_list') ??
-    classNode.namedChildren.find((c) => c.type === 'enum_declaration_list');
-  if (!body) return;
-  for (let i = 0; i < body.namedChildCount; i++) {
-    const member = body.namedChild(i)!;
-    if (member.type === 'method_declaration') {
-      const name = extractName(member);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'method',
-          parent: className,
-          startLine: member.startPosition.row + 1,
-          endLine: member.endPosition.row + 1,
-          signature: firstLine(member.text),
-        });
-      }
-    }
-  }
-}
-
-function extractPhpSymbols(tree: Tree): SourceSymbol[] {
-  const symbols: SourceSymbol[] = [];
-  const root = tree.rootNode;
-
-  for (let i = 0; i < root.childCount; i++) {
-    const node = root.child(i)!;
-    const startLine = node.startPosition.row + 1;
-    const endLine = node.endPosition.row + 1;
-
-    if (node.type === 'function_definition') {
-      const name = extractName(node);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'function',
-          startLine,
-          endLine,
-          signature: firstLine(node.text),
-        });
-      }
-    } else if (node.type === 'class_declaration') {
-      const name = extractName(node);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'class',
-          startLine,
-          endLine,
-          signature: firstLine(node.text),
-        });
-        extractPhpClassMembers(node, name, symbols);
-      }
-    } else if (node.type === 'interface_declaration') {
-      const name = extractName(node);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'interface',
-          startLine,
-          endLine,
-          signature: firstLine(node.text),
-        });
-        extractPhpClassMembers(node, name, symbols);
-      }
-    } else if (node.type === 'trait_declaration') {
-      const name = extractName(node);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'class',
-          startLine,
-          endLine,
-          signature: firstLine(node.text),
-        });
-        extractPhpClassMembers(node, name, symbols);
-      }
-    } else if (node.type === 'enum_declaration') {
-      const name = extractName(node);
-      if (name) {
-        symbols.push({
-          name,
-          kind: 'class',
-          startLine,
-          endLine,
-          signature: firstLine(node.text),
-        });
-        extractPhpClassMembers(node, name, symbols);
-      }
-    } else if (node.type === 'const_declaration') {
-      for (const child of node.namedChildren) {
-        if (child.type === 'const_element') {
-          const nameNode = child.namedChildren.find((c) => c.type === 'name');
-          if (nameNode) {
-            symbols.push({
-              name: nameNode.text,
-              kind: 'const',
-              startLine,
-              endLine,
-              signature: firstLine(node.text),
-            });
-          }
-        }
-      }
-    }
-  }
-
-  return symbols;
-}
+const symbolExtractors: Record<string, (tree: Tree) => SourceSymbol[]> = {
+  '.py': extractPySymbols,
+  '.rs': extractRustSymbols,
+  '.go': extractGoSymbols,
+  '.c': extractCSymbols,
+  '.h': extractCSymbols,
+  '.php': extractPhpSymbols,
+  '.ts': extractTsSymbols,
+  '.tsx': extractTsSymbols,
+  '.js': extractTsSymbols,
+  '.jsx': extractTsSymbols,
+};
 
 export async function parseSourceSymbols(
   filePath: string,
@@ -967,22 +865,8 @@ export async function parseSourceSymbols(
   if (!tree) return [];
 
   try {
-    if (ext === '.py') {
-      return extractPySymbols(tree);
-    }
-    if (ext === '.rs') {
-      return extractRustSymbols(tree);
-    }
-    if (ext === '.go') {
-      return extractGoSymbols(tree);
-    }
-    if (ext === '.c' || ext === '.h') {
-      return extractCSymbols(tree);
-    }
-    if (ext === '.php') {
-      return extractPhpSymbols(tree);
-    }
-    return extractTsSymbols(tree);
+    const extractSymbols = symbolExtractors[ext] ?? extractTsSymbols;
+    return extractSymbols(tree);
   } finally {
     tree.delete();
   }

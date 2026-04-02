@@ -31,6 +31,20 @@ describe('detectProvider', () => {
     expect(() => detectProvider('sk-ant-abc123')).toThrow(/Anthropic/);
   });
 
+  it('detects Ollama key with default base URL', () => {
+    const p = detectProvider('ollama:qwen3-embedding:8b');
+    expect(p.name).toBe('ollama');
+    expect(p.model).toBe('qwen3-embedding:8b');
+    expect(p.apiBase).toBe('http://localhost:11434/v1');
+  });
+
+  it('detects Ollama key with custom base URL', () => {
+    const p = detectProvider('ollama:qwen3-embedding:8b@http://myhost:9999');
+    expect(p.name).toBe('ollama');
+    expect(p.model).toBe('qwen3-embedding:8b');
+    expect(p.apiBase).toBe('http://myhost:9999/v1');
+  });
+
   it('rejects unknown key', () => {
     expect(() => detectProvider('xyz_abc123')).toThrow(/Unrecognized/);
   });

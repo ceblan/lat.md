@@ -17,6 +17,7 @@ import { SOURCE_EXTENSIONS, clearSymbolCache } from '../source-parser.js';
 import { walkEntries } from '../walk.js';
 import type { CmdContext, CmdResult, Styler } from '../context.js';
 import { INIT_VERSION, readInitVersion } from '../init-version.js';
+import { OLLAMA_LOCAL_MODELS_HINT } from '../search/provider-hints.js';
 
 export type CheckError = {
   file: string;
@@ -554,7 +555,8 @@ export async function checkAllCommand(ctx: CmdContext): Promise<CmdResult> {
         ' No LLM key found — semantic search (lat search) will not work.' +
         ' Provide a key via LAT_LLM_KEY, LAT_LLM_KEY_FILE, LAT_LLM_KEY_HELPER, or run ' +
         s.cyan('lat init') +
-        ' to configure. For local models, use LAT_LLM_KEY=ollama:model-name.',
+        ' to configure.' +
+        OLLAMA_LOCAL_MODELS_HINT,
     );
   }
 

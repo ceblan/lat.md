@@ -11,9 +11,17 @@ Tests for validating wiki links in `lat.md/` markdown files.
 
 Given a file with a wiki link pointing to a nonexistent section, [[cli#check#md]] should report it as a broken link.
 
+### Detects missing PHP source symbols
+
+Given links to missing symbols in a `.php` file (missing function, type, or method), [[cli#check#md]] should report one broken-link error per missing target.
+
 ## Passes with valid links
 
 Given files where all wiki links resolve to existing sections, [[cli#check#md]] should report no errors.
+
+### Passes with PHP source symbol links
+
+Given valid links to PHP symbols (`class`, `interface`, `trait`, `enum`, `const`, function, and methods), [[cli#check#md]] should resolve them without errors.
 
 ### Passes with C enum value links
 

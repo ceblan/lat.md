@@ -14,6 +14,7 @@ import {
 } from '../lattice.js';
 import { formatResultList } from '../format.js';
 import { scanCodeRefs } from '../code-refs.js';
+import { SOURCE_EXTENSIONS } from '../source-parser.js';
 import type { CmdContext, CmdResult } from '../context.js';
 
 export type Scope = 'md' | 'code' | 'md+code';
@@ -32,20 +33,6 @@ export type RefsError = {
 
 export type RefsResult = RefsFound | RefsError;
 
-/** Extensions recognized as source code for ref queries. */
-const SOURCE_EXTS = new Set([
-  '.ts',
-  '.tsx',
-  '.js',
-  '.jsx',
-  '.py',
-  '.rs',
-  '.go',
-  '.c',
-  '.h',
-  '.php',
-]);
-
 /**
  * Check if a query looks like a source file path (has a recognized extension
  * and the file exists on disk).
@@ -58,7 +45,7 @@ function isSourceQuery(
   const filePart = hashIdx === -1 ? query : query.slice(0, hashIdx);
   const symbolPart = hashIdx === -1 ? '' : query.slice(hashIdx + 1);
   const ext = extname(filePart);
-  if (!SOURCE_EXTS.has(ext)) return null;
+  if (!SOURCE_EXTENSIONS.has(ext)) return null;
   if (!existsSync(join(projectRoot, filePart))) return null;
   return { filePart, symbolPart };
 }

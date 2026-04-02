@@ -8,7 +8,7 @@ Tests in `tests/search.test.ts`.
 
 ## Provider Detection
 
-Unit tests (always run). Verify `detectProvider` correctly identifies OpenAI (`sk-`), Vercel (`vck_`), rejects Anthropic (`sk-ant-`) with a helpful message, and rejects unknown prefixes.
+Unit tests (always run). Verify `detectProvider` correctly identifies OpenAI (`sk-`), Vercel (`vck_`), Ollama (`ollama:model` and `ollama:model@url`), rejects Anthropic (`sk-ant-`) with a helpful message, and rejects unknown prefixes.
 
 ## RAG Replay Tests
 

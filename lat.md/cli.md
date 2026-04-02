@@ -321,10 +321,11 @@ Provider is auto-detected from the resolved key prefix:
 
 - `sk-...` — OpenAI (uses `text-embedding-3-small`, 1536 dims)
 - `vck_...` — Vercel AI Gateway (uses `openai/text-embedding-3-small`, 1536 dims)
+- `ollama:model` — Ollama local inference (default model `qwen3-embedding:8b`, 4096 dims). Supports custom base URL via `ollama:model@http://host:port` (defaults to `http://localhost:11434`). Uses the OpenAI-compatible `/v1/embeddings` endpoint exposed by Ollama.
 - `sk-ant-...` — Anthropic (not supported, errors with guidance)
 - `REPLAY_LAT_LLM_KEY::<url>` — test-only replay server for offline testing
 
-Implementation: [[src/search/provider.ts]], [[src/config.ts]]
+Implementation: [[src/search/provider.ts]], [[src/search/providers/ollama.ts]], [[src/config.ts]]
 
 ### Embeddings
 
