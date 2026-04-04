@@ -8,3 +8,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[parser]] — Markdown parsing architecture, section tree construction, and ref extraction
 - [[tests]] — High-level test specifications mapped to code via require-code-mention
 - [[website]] — Standalone Next.js marketing site deployed to Vercel
+- [[pi-integration]] — How lat.md integrates with the pi coding agent

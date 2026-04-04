@@ -183,6 +183,8 @@ Sets up a Pi extension that registers lat tools as native Pi tools and hooks int
 
 The `agent_end` hook now reuses the same stop-check logic as Cursor/Claude via `lat hook cursor stop`, so behavior stays consistent across agents (including nested `lat.md/` git repos; see [[cli#hook#Excluding lat.md/ from version control]]).
 
+See [[pi-integration]] for a complete user-facing explanation of how lat.md integrates with pi, including the runtime workflow, file structure, and troubleshooting.
+
 ### Cursor
 
 Sets up `.cursor/rules`, a Cursor stop hook, and the MCP server for Cursor.
@@ -248,6 +250,8 @@ Key resolution order for embeddings: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_L
 
 Reranker resolution order: `LAT_RERANKER_MODEL`/`LAT_RERANKER_API_BASE`/`LAT_RERANKER_TOP_K` env vars override config file values. Reranking is disabled unless a reranker model is configured.
 
+Optional debugging: set `LAT_RERANKER_DEBUG=1` to print reranking pipeline/request traces to stderr.
+
 Implementation: [[src/config.ts#getLlmKey]], [[src/config.ts#getRerankerConfig]]
 
 ## hook
@@ -260,6 +264,8 @@ Currently supports:
 
 - `claude` with `UserPromptSubmit` and `Stop`
 - `cursor` with `stop`
+
+For a user-friendly explanation of how lat.md integrates with specific agents (including pi), see [[pi-integration]].
 
 ### UserPromptSubmit
 
@@ -394,6 +400,8 @@ Implementation: [[src/search/search.ts]]
 When configured, search reranks vector candidates via a local HTTP endpoint before returning results.
 
 Search retrieves `max(limit, reranker_top_k)` vector candidates, sends them to `POST /v1/rerank`, then returns the top `limit`. If reranking is not configured, or reranking fails, search falls back to vector order.
+
+Set `LAT_RERANKER_DEBUG=1` to print pipeline, request, response, and fallback traces to stderr.
 
 Implementation: [[src/cli/search.ts#runSearch]], [[src/search/pipeline.ts#runSearchPipeline]], [[src/search/reranker.ts#rerankSections]], [[src/config.ts#getRerankerConfig]], [[src/config/reranker.ts#resolveRerankerConfig]]
 

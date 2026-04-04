@@ -5,6 +5,15 @@ type RerankResponse = {
   results?: { index: number; relevance_score: number }[];
 };
 
+function isRerankerDebugEnabled(): boolean {
+  return process.env.LAT_RERANKER_DEBUG === '1';
+}
+
+function debugReranker(message: string): void {
+  if (!isRerankerDebugEnabled()) return;
+  process.stderr.write(`[reranker] ${message}\n`);
+}
+
 /**
  * Rerank KNN candidates via an OpenAI-compatible rerank endpoint.
  *
@@ -21,7 +30,13 @@ export async function rerankSections(
 
   const documents = candidates.map((c) => c.content);
   const url = `${reranker.apiBase.replace(/\/$/, '')}/v1/rerank`;
+  const topN = Math.min(reranker.topK, candidates.length);
 
+  debugReranker(
+    `request POST ${url} model=${reranker.model} candidates=${candidates.length} top_n=${topN}`,
+  );
+
+  const startedAt = Date.now();
   const resp = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -29,12 +44,16 @@ export async function rerankSections(
       model: reranker.model,
       query,
       documents,
-      top_n: Math.min(reranker.topK, candidates.length),
+      top_n: topN,
     }),
   });
+  const elapsedMs = Date.now() - startedAt;
 
   if (!resp.ok) {
     const body = await resp.text();
+    debugReranker(
+      `response status=${resp.status} ms=${elapsedMs} error=${JSON.stringify(body.slice(0, 200))}`,
+    );
     throw new Error(
       `Reranker API error (${resp.status}): ${body.slice(0, 200)}`,
     );
@@ -42,7 +61,19 @@ export async function rerankSections(
 
   const json = (await resp.json()) as RerankResponse;
   const ranked = json.results;
-  if (!ranked || ranked.length === 0) return candidates;
+
+  if (!ranked || ranked.length === 0) {
+    debugReranker(`response status=${resp.status} ms=${elapsedMs} results=0`);
+    return candidates;
+  }
+
+  const topPreview = ranked
+    .slice(0, 5)
+    .map((r) => `#${r.index}:${r.relevance_score.toExponential(2)}`)
+    .join(', ');
+  debugReranker(
+    `response status=${resp.status} ms=${elapsedMs} results=${ranked.length} top=[${topPreview}]`,
+  );
 
   const byIndex = new Map(candidates.map((c, i) => [i, c]));
   const sorted = ranked

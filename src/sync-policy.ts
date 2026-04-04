@@ -15,7 +15,10 @@ const LATMD_RATIO = 0.05;
 /** If lat.md/ changes exceed this many lines, skip the ratio check entirely. */
 const LATMD_UPPER_THRESHOLD = 50;
 
-export function computeNeedsSync(codeLines: number, latMdLines: number): boolean {
+export function computeNeedsSync(
+  codeLines: number,
+  latMdLines: number,
+): boolean {
   if (codeLines < DIFF_THRESHOLD || latMdLines >= LATMD_UPPER_THRESHOLD) {
     return false;
   }

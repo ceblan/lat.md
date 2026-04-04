@@ -7,7 +7,11 @@ import { getSection, formatSectionOutput } from './section.js';
 import { getLlmKey } from '../config.js';
 import { checkMd, checkCodeRefs, checkIndex, checkSections } from './check.js';
 import { analyzeDiff } from '../sync-status.js';
-import { buildStopStatus, formatStopReason, type StopStatus } from '../sync-policy.js';
+import {
+  buildStopStatus,
+  formatStopReason,
+  type StopStatus,
+} from '../sync-policy.js';
 
 function outputClaudePromptSubmit(context: string): void {
   process.stdout.write(

@@ -5,7 +5,9 @@ type RerankerEnv = Record<string, string | undefined>;
 function parsePositiveInt(name: string, raw: number | string): number {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`Invalid reranker ${name} value: ${raw}. Expected a positive number.`);
+    throw new Error(
+      `Invalid reranker ${name} value: ${raw}. Expected a positive number.`,
+    );
   }
   return Math.floor(value);
 }

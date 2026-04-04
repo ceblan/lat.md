@@ -23,6 +23,15 @@ const DEFAULT_DEPS: SearchPipelineDeps = {
   rerankSections,
 };
 
+function isRerankerDebugEnabled(): boolean {
+  return process.env.LAT_RERANKER_DEBUG === '1';
+}
+
+function debugReranker(message: string): void {
+  if (!isRerankerDebugEnabled()) return;
+  process.stderr.write(`[reranker] ${message}\n`);
+}
+
 /**
  * Runs vector search with optional reranking.
  *
@@ -45,13 +54,30 @@ export async function runSearchPipeline(
     initialK,
   );
 
-  if (!reranker || vectorResults.length === 0) {
+  debugReranker(
+    `pipeline query=${JSON.stringify(query.slice(0, 80))} limit=${limit} initialK=${initialK} vectorResults=${vectorResults.length} enabled=${!!reranker}`,
+  );
+
+  if (!reranker) {
+    debugReranker('pipeline skip rerank: not configured');
+    return vectorResults;
+  }
+
+  if (vectorResults.length === 0) {
+    debugReranker('pipeline skip rerank: no vector results');
     return vectorResults;
   }
 
   try {
-    return await deps.rerankSections(query, vectorResults, reranker);
-  } catch {
+    const reranked = await deps.rerankSections(query, vectorResults, reranker);
+    debugReranker(
+      `pipeline rerank applied: input=${vectorResults.length} output=${reranked.length}`,
+    );
+    return reranked;
+  } catch (err) {
+    debugReranker(
+      `pipeline rerank failed, fallback to vector order: ${(err as Error).message}`,
+    );
     return vectorResults;
   }
 }
