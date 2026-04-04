@@ -2,8 +2,7 @@ import type { CmdContext, CmdResult, Styler } from '../context.js';
 import { openDb, ensureSchema, closeDb } from '../search/db.js';
 import { detectProvider } from '../search/provider.js';
 import { indexSections, type IndexStats } from '../search/index.js';
-import { searchSections } from '../search/search.js';
-import { rerankSections } from '../search/reranker.js';
+import { runSearchPipeline } from '../search/pipeline.js';
 import {
   loadAllSections,
   flattenSections,
@@ -65,18 +64,16 @@ export async function runSearch(
   reranker?: RerankerConfig,
 ): Promise<SearchResult> {
   return withDb(latDir, key, progress, async (db, provider) => {
-    const initialK = reranker ? Math.max(limit, reranker.topK) : limit;
-    let results = await searchSections(db, query, provider, key, initialK);
+    const results = await runSearchPipeline({
+      db,
+      query,
+      provider,
+      key,
+      limit,
+      reranker,
+    });
     if (results.length === 0) {
       return { query, matches: [] };
-    }
-
-    if (reranker) {
-      try {
-        results = await rerankSections(query, results, reranker);
-      } catch {
-        // Soft-fail: if reranking is unavailable, keep vector ranking.
-      }
     }
 
     const allSections = await loadAllSections(latDir);

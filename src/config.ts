@@ -2,6 +2,7 @@ import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import xdg from '@folder/xdg';
+import { resolveRerankerConfig } from './config/reranker.js';
 
 // ── XDG config directory ────────────────────────────────────────────
 
@@ -102,23 +103,5 @@ export type RerankerConfig = {
  */
 export function getRerankerConfig(): RerankerConfig | undefined {
   const config = readConfig();
-
-  const model = process.env.LAT_RERANKER_MODEL || config.reranker_model;
-  if (!model) return undefined;
-
-  const apiBase =
-    process.env.LAT_RERANKER_API_BASE ||
-    config.reranker_api_base ||
-    'http://localhost:8082';
-
-  const rawTopK = process.env.LAT_RERANKER_TOP_K ?? config.reranker_top_k;
-  const topK = rawTopK === undefined ? 20 : Number(rawTopK);
-
-  if (!Number.isFinite(topK) || topK <= 0) {
-    throw new Error(
-      `Invalid reranker top_k value: ${rawTopK}. Expected a positive number.`,
-    );
-  }
-
-  return { model, apiBase, topK: Math.floor(topK) };
+  return resolveRerankerConfig(config);
 }

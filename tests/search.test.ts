@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, rmSync, cpSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -8,7 +8,9 @@ import {
 } from '../src/search/provider.js';
 import { openDb, ensureSchema, closeDb } from '../src/search/db.js';
 import { indexSections } from '../src/search/index.js';
-import { searchSections } from '../src/search/search.js';
+import { searchSections, type SearchResult } from '../src/search/search.js';
+import { runSearchPipeline } from '../src/search/pipeline.js';
+import { resolveRerankerConfig } from '../src/config/reranker.js';
 import { startReplayServer, hasReplayData } from './rag-replay-server.js';
 import type { Client } from '@libsql/client';
 import type { Server } from 'node:http';
@@ -47,6 +49,121 @@ describe('detectProvider', () => {
 
   it('rejects unknown key', () => {
     expect(() => detectProvider('xyz_abc123')).toThrow(/Unrecognized/);
+  });
+});
+
+// @lat: [[search#Reranker Fallback#Uses vector ranking when reranker is not configured]]
+describe('runSearchPipeline', () => {
+  const vectorResults: SearchResult[] = [
+    {
+      id: 's1',
+      file: 'lat.md/a.md',
+      heading: 'A',
+      content: 'A content',
+    },
+    {
+      id: 's2',
+      file: 'lat.md/b.md',
+      heading: 'B',
+      content: 'B content',
+    },
+  ];
+
+  it('uses vector ranking when reranker is not configured', async () => {
+    const searchMock = vi.fn(async () => vectorResults);
+    const rerankMock = vi.fn(async () => {
+      throw new Error('reranker should not run');
+    });
+
+    const result = await runSearchPipeline(
+      {
+        db: {} as never,
+        query: 'q',
+        provider: {} as never,
+        key: 'k',
+        limit: 2,
+      },
+      {
+        searchSections: searchMock as typeof searchSections,
+        rerankSections: rerankMock,
+      },
+    );
+
+    expect(result).toEqual(vectorResults);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'q',
+      expect.anything(),
+      'k',
+      2,
+    );
+    expect(rerankMock).not.toHaveBeenCalled();
+  });
+
+  // @lat: [[search#Reranker Fallback#Falls back to vector ranking when reranker fails]]
+  it('falls back to vector ranking when reranker fails', async () => {
+    const searchMock = vi.fn(async () => vectorResults);
+    const rerankMock = vi.fn(async () => {
+      throw new Error('timeout');
+    });
+
+    const result = await runSearchPipeline(
+      {
+        db: {} as never,
+        query: 'q',
+        provider: {} as never,
+        key: 'k',
+        limit: 3,
+        reranker: {
+          model: 'bge-reranker-v2-m3',
+          apiBase: 'http://localhost:8082',
+          topK: 20,
+        },
+      },
+      {
+        searchSections: searchMock as typeof searchSections,
+        rerankSections: rerankMock,
+      },
+    );
+
+    expect(result).toEqual(vectorResults);
+    expect(searchMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'q',
+      expect.anything(),
+      'k',
+      20,
+    );
+    expect(rerankMock).toHaveBeenCalledOnce();
+  });
+});
+
+// @lat: [[search#Reranker Config#Parses reranker config from env and file values]]
+describe('resolveRerankerConfig', () => {
+  it('parses reranker config from env and file values', () => {
+    const result = resolveRerankerConfig(
+      {
+        reranker_model: 'config-model',
+        reranker_api_base: 'http://config:8082',
+        reranker_top_k: 7,
+      },
+      {
+        LAT_RERANKER_MODEL: 'env-model',
+        LAT_RERANKER_API_BASE: 'http://env:8082',
+        LAT_RERANKER_TOP_K: '11',
+      },
+    );
+
+    expect(result).toEqual({
+      model: 'env-model',
+      apiBase: 'http://env:8082',
+      topK: 11,
+    });
+  });
+
+  // @lat: [[search#Reranker Config#Treats missing model as disabled reranker]]
+  it('treats missing model as disabled reranker', () => {
+    expect(resolveRerankerConfig({}, {})).toBeUndefined();
   });
 });
 

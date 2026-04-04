@@ -284,7 +284,7 @@ Conditionally blocks the agent from stopping — only when something is actually
 
 Runs the same `lat check` and diff analysis as Claude's `Stop` hook, but emits Cursor's `followup_message` payload instead of Claude's block response so the agent continues its loop in Cursor.
 
-Implementation: [[src/cli/hook.ts]], shared diff analysis in [[src/sync-status.ts#analyzeDiff]].
+Implementation: [[src/cli/hook.ts]], shared diff analysis in [[src/sync-status.ts#analyzeDiff]], and shared stop-policy decisions in [[src/sync-policy.ts#formatStopReason]].
 
 ### Excluding lat.md/ from version control
 
@@ -395,7 +395,7 @@ When configured, search reranks vector candidates via a local HTTP endpoint befo
 
 Search retrieves `max(limit, reranker_top_k)` vector candidates, sends them to `POST /v1/rerank`, then returns the top `limit`. If reranking is not configured, or reranking fails, search falls back to vector order.
 
-Implementation: [[src/cli/search.ts#runSearch]], [[src/search/reranker.ts#rerankSections]], [[src/config.ts#getRerankerConfig]]
+Implementation: [[src/cli/search.ts#runSearch]], [[src/search/pipeline.ts#runSearchPipeline]], [[src/search/reranker.ts#rerankSections]], [[src/config.ts#getRerankerConfig]], [[src/config/reranker.ts#resolveRerankerConfig]]
 
 ## Section Preview
 
