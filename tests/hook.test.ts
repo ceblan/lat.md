@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
-import { mkdtempSync, rmSync, writeFileSync, chmodSync } from 'node:fs';
+import {
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  chmodSync,
+  cpSync,
+  mkdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const casesDir = join(import.meta.dirname, 'cases');
@@ -26,6 +33,38 @@ function makeFakeGitDir(output: string): string {
   writeFileSync(
     gitScript,
     '#!/bin/sh\n' + "cat <<'NUMSTAT'\n" + output + '\nNUMSTAT\n',
+  );
+  chmodSync(gitScript, 0o755);
+  return dir;
+}
+
+/**
+ * Fake git that returns different numstat output for project root vs nested
+ * lat.md repo calls.
+ */
+function makeFakeGitDirDual(mainOutput: string, nestedOutput: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'lat-hook-dual-'));
+  const gitScript = join(dir, 'git');
+  writeFileSync(
+    gitScript,
+    [
+      '#!/bin/sh',
+      'if [ "$1" = "diff" ] && [ "$2" = "HEAD" ] && [ "$3" = "--numstat" ]; then',
+      '  case "$PWD" in',
+      '    */lat.md)',
+      "      cat <<'NESTED'",
+      nestedOutput,
+      'NESTED',
+      '      ;;',
+      '    *)',
+      "      cat <<'MAIN'",
+      mainOutput,
+      'MAIN',
+      '      ;;',
+      '  esac',
+      'fi',
+      '',
+    ].join('\n'),
   );
   chmodSync(gitScript, 0o755);
   return dir;
@@ -79,6 +118,14 @@ function runStopHook(
 
 const clean = join(casesDir, 'hook-clean');
 const broken = join(casesDir, 'error-broken-links');
+
+function makeNestedLatCase(): string {
+  const root = mkdtempSync(join(tmpdir(), 'lat-hook-case-'));
+  const dir = join(root, 'case');
+  cpSync(clean, dir, { recursive: true });
+  mkdirSync(join(dir, 'lat.md', '.git'), { recursive: true });
+  return dir;
+}
 
 describe('hook stop', () => {
   // @lat: [[tests/hook#Exits silently when check passes and no diff]]
@@ -182,6 +229,22 @@ describe('hook stop', () => {
       expect(stdout).toBe('');
     } finally {
       rmSync(fakeBinDir, { recursive: true });
+    }
+  });
+
+  // @lat: [[tests/hook#Uses nested lat.md repo diff when lat.md has its own .git]]
+  it('uses nested lat.md repo diff when lat.md has its own .git', () => {
+    const nestedCase = makeNestedLatCase();
+    const fakeBinDir = makeFakeGitDirDual(
+      numstat([[80, 20, 'src/refactor.ts']]),
+      numstat([[6, 0, 'feature.md']]),
+    );
+    try {
+      const { stdout } = runStopHook('claude', nestedCase, { fakeBinDir });
+      expect(stdout).toBe('');
+    } finally {
+      rmSync(fakeBinDir, { recursive: true });
+      rmSync(nestedCase, { recursive: true });
     }
   });
 

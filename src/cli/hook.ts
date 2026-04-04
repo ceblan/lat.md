@@ -1,5 +1,4 @@
-import { execSync } from 'node:child_process';
-import { dirname, extname } from 'node:path';
+import { dirname } from 'node:path';
 import { findLatticeDir } from '../lattice.js';
 import { plainStyler, type CmdContext } from '../context.js';
 import { expandPrompt } from './expand.js';
@@ -7,7 +6,7 @@ import { runSearch } from './search.js';
 import { getSection, formatSectionOutput } from './section.js';
 import { getLlmKey } from '../config.js';
 import { checkMd, checkCodeRefs, checkIndex, checkSections } from './check.js';
-import { SOURCE_EXTENSIONS } from '../source-parser.js';
+import { analyzeDiff } from '../sync-status.js';
 
 function outputClaudePromptSubmit(context: string): void {
   process.stdout.write(
@@ -162,42 +161,6 @@ const LATMD_RATIO = 0.05;
 /** If lat.md/ changes exceed this many lines, skip the ratio check entirely. */
 const LATMD_UPPER_THRESHOLD = 50;
 
-/** Run `git diff --numstat` and return { codeLines, latMdLines }. */
-function analyzeDiff(projectRoot: string): {
-  codeLines: number;
-  latMdLines: number;
-} {
-  let output: string;
-  try {
-    output = execSync('git diff HEAD --numstat', {
-      cwd: projectRoot,
-      encoding: 'utf-8',
-    });
-  } catch {
-    return { codeLines: 0, latMdLines: 0 };
-  }
-
-  let codeLines = 0;
-  let latMdLines = 0;
-
-  // Each line: "added\tremoved\tfile" (e.g. "42\t11\tsrc/cli/hook.ts")
-  for (const line of output.split('\n')) {
-    const parts = line.split('\t');
-    if (parts.length < 3) continue;
-    const added = parseInt(parts[0], 10) || 0;
-    const removed = parseInt(parts[1], 10) || 0;
-    const file = parts[2];
-    const changed = added + removed;
-    if (file.startsWith('lat.md/')) {
-      latMdLines += changed;
-    } else if (SOURCE_EXTENSIONS.has(extname(file))) {
-      codeLines += changed;
-    }
-  }
-
-  return { codeLines, latMdLines };
-}
-
 type StopStatus = {
   checkFailed: boolean;
   totalErrors: number;
@@ -219,7 +182,7 @@ async function getStopStatus(latDir: string): Promise<StopStatus> {
   const checkFailed = totalErrors > 0;
 
   const projectRoot = dirname(latDir);
-  const { codeLines, latMdLines } = analyzeDiff(projectRoot);
+  const { codeLines, latMdLines } = analyzeDiff(projectRoot, latDir);
   let needsSync = false;
   if (codeLines >= DIFF_THRESHOLD && latMdLines < LATMD_UPPER_THRESHOLD) {
     const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);

@@ -177,9 +177,11 @@ Sets up `CLAUDE.md` and two agent hooks for the Claude Code coding agent.
 Sets up a Pi extension that registers lat tools as native Pi tools and hooks into the agent lifecycle.
 
 - `AGENTS.md` — shared instruction file (created in the shared step)
-- `.pi/extensions/lat.ts` — TypeScript extension generated from `templates/pi-extension.ts` with the full invocation command injected. `resolveLatBin()` in `init.ts` reconstructs exactly how the process was started: for compiled binaries it's just the binary path; for `.ts` source files run via tsx it captures `node <execArgv> <script>` so the same loader flags are replayed. Registers six tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) that shell out to the `lat` CLI. Each tool provides a `renderCall` method so the Pi TUI displays the query/parameters inline in the tool call header (e.g. `lat search "query text"`). The `lat_search` and `lat_section` tools also provide a `renderResult` method that shows a collapsed preview (first 4 lines) by default and renders the full output as styled markdown (via pi's `Markdown` component and `getMarkdownTheme()`) when expanded via Ctrl+O (`expandTools` keybinding). Registers custom message renderers for `lat-reminder` and `lat-check` that show a collapsed one-liner by default and expand to full markdown-rendered content on Ctrl+O. Hooks into `before_agent_start` (injects a visible search reminder via `customType` message with `display: true`) and `agent_end` (runs `lat check` + diff analysis, sends a visible follow-up message if something needs fixing).
+- `.pi/extensions/lat.ts` — TypeScript extension generated from `templates/pi-extension.ts` with the full invocation command injected. `resolveLatBin()` in `init.ts` reconstructs exactly how the process was started: for compiled binaries it's just the binary path; for `.ts` source files run via tsx it captures `node <execArgv> <script>` so the same loader flags are replayed. Registers six tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) that shell out to the `lat` CLI. Each tool provides a `renderCall` method so the Pi TUI displays the query/parameters inline in the tool call header (e.g. `lat search "query text"`). The `lat_search` and `lat_section` tools also provide a `renderResult` method that shows a collapsed preview (first 4 lines) by default and renders the full output as styled markdown (via pi's `Markdown` component and `getMarkdownTheme()`) when expanded via Ctrl+O (`expandTools` keybinding). Registers custom message renderers for `lat-reminder` and `lat-check` that show a collapsed one-liner by default and expand to full markdown-rendered content on Ctrl+O. Hooks into `before_agent_start` (injects a visible search reminder via `customType` message with `display: true`) and `agent_end` (delegates stop checks to `lat hook cursor stop`, then sends a visible follow-up message when it returns work to do).
 - `.pi/skills/lat-md/SKILL.md` — skill spec generated from `templates/skill/SKILL.md`. Teaches the agent how to author and maintain `lat.md/` files (section structure, wiki links, code refs, test specs). Pi discovers it automatically from the `.pi/skills/` directory.
 - `.pi` directory added to `.gitignore` (extension and skills contain local paths)
+
+The `agent_end` hook now reuses the same stop-check logic as Cursor/Claude via `lat hook cursor stop`, so behavior stays consistent across agents (including nested `lat.md/` git repos; see [[cli#hook#Excluding lat.md/ from version control]]).
 
 ### Cursor
 
@@ -235,13 +237,18 @@ Implementation: [[src/cli/init.ts]], checklist menu in [[src/cli/checklist-menu.
 
 User-level configuration is stored in `~/.config/lat/config.json` (XDG Base Directory on Linux/macOS, `%APPDATA%\lat\config.json` on Windows). The `XDG_CONFIG_HOME` env var is respected if set.
 
-Currently supports one field:
+Currently supports these fields:
 
 - `llm_key` — embedding API key for semantic search, used when `LAT_LLM_KEY` env var is not set
+- `reranker_model` — optional reranker model name (enables reranking when set)
+- `reranker_api_base` — optional reranker API base URL (default `http://localhost:8082`)
+- `reranker_top_k` — optional candidate count to rerank (default `20`)
 
-Key resolution order: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`. This applies everywhere: `lat search`, `lat check`, and the MCP `lat_search` tool.
+Key resolution order for embeddings: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`.
 
-Implementation: [[src/config.ts]]
+Reranker resolution order: `LAT_RERANKER_MODEL`/`LAT_RERANKER_API_BASE`/`LAT_RERANKER_TOP_K` env vars override config file values. Reranking is disabled unless a reranker model is configured.
+
+Implementation: [[src/config.ts#getLlmKey]], [[src/config.ts#getRerankerConfig]]
 
 ## hook
 
@@ -270,14 +277,32 @@ Conditionally blocks the agent from stopping — only when something is actually
 1. **No `lat.md/` dir** — exit silently.
 2. **Run `lat check`** — always, on both first and second pass.
 3. **Second pass** (`stop_hook_active` true) — if check still fails, print warning to stderr (no block, loop stops). If check passes, exit silently.
-4. **First pass** — run `git diff HEAD --numstat`. Count `codeLines` (files matching [[src/source-parser.ts#SOURCE_EXTENSIONS]]) and `latMdLines`. Skip ratio check if `codeLines < 5` or `latMdLines >= 50` (enough doc work was clearly done). Otherwise round `latMdLines` up to 1 (if nonzero) and flag `needsSync` when `latMdLines < codeLines * 5%`.
+4. **First pass** — run diff analysis. By default this uses `git diff HEAD --numstat` in the project root to count `codeLines` (files matching [[src/source-parser.ts#SOURCE_EXTENSIONS]]) and `latMdLines`. If `lat.md/` has its own `.git`, it instead reads `latMdLines` from that nested repo's diff. Skip ratio check if `codeLines < 5` or `latMdLines >= 50` (enough doc work was clearly done). Otherwise round `latMdLines` up to 1 (if nonzero) and flag `needsSync` when `latMdLines < codeLines * 5%`.
 5. **Decision** — both pass: exit silently, clean output. Check failed + needs sync: block ("update `lat.md/`, then run `lat check` until it passes"). Check failed only: block ("run `lat check` until it passes"). Needs sync only: block with explicit context ("not updated" when 0 lat.md lines, "may not be fully in sync (N lines)" when some changes exist but below ratio).
 
 ### cursor stop
 
 Runs the same `lat check` and diff analysis as Claude's `Stop` hook, but emits Cursor's `followup_message` payload instead of Claude's block response so the agent continues its loop in Cursor.
 
-Implementation: [[src/cli/hook.ts]]
+Implementation: [[src/cli/hook.ts]], shared diff analysis in [[src/sync-status.ts#analyzeDiff]].
+
+### Excluding lat.md/ from version control
+
+If you keep `lat.md/` out of the main repo (`.gitignore` or `.git/info/exclude`), stop hooks still run but diff-based sync checks need special handling.
+
+- **Default behavior (single repo):** hooks read `git diff HEAD --numstat` from the project root. Ignored/untracked `lat.md/` files do not appear there, so hooks may report false sync warnings.
+- **Nested repo behavior (new):** if `lat.md/` contains its own `.git` directory, hooks read code diff from the main repo and `lat.md` diff from the nested repo. This supports split-repository workflows while preserving sync checks.
+- **Pi behavior:** Pi now delegates `agent_end` checks to `lat hook cursor stop`, so it shares exactly the same sync logic as CLI hooks.
+
+**Why ignored files disappear from diff:** `git diff HEAD` reports changes for tracked files. If `lat.md/` files were never added to the main repo index, they won't be counted there.
+
+**Recommended options:**
+
+1. **Use a nested `lat.md/` repo** (own `.git`) when you want doc history isolated from the main repo while keeping sync checks.
+2. **Keep `lat.md/` tracked in the main repo** and manage push policy separately (local branch / selective cherry-pick / pre-push guard).
+3. **Disable hook enforcement** if you intentionally don't want sync checks.
+
+**Note:** The `lat init` command adds `.gitignore` entries for agent-specific directories (`.claude/`, `.cursor/`, `.pi/`, etc.) only when those paths are not already tracked (`git ls-files`).
 
 ## mcp
 
@@ -321,7 +346,7 @@ Provider is auto-detected from the resolved key prefix:
 
 - `sk-...` — OpenAI (uses `text-embedding-3-small`, 1536 dims)
 - `vck_...` — Vercel AI Gateway (uses `openai/text-embedding-3-small`, 1536 dims)
-- `ollama:model` — Ollama local inference (default model `qwen3-embedding:8b`, 4096 dims). Supports custom base URL via `ollama:model@http://host:port` (defaults to `http://localhost:11434`). Uses the OpenAI-compatible `/v1/embeddings` endpoint exposed by Ollama.
+- `ollama:model` — Ollama local inference (default model `qwen3-embedding:8b`, 4096 dims). Supports custom base URL via `ollama:model@http://host:port` (defaults to `http://192.168.100.1:11434`). Uses the OpenAI-compatible `/v1/embeddings` endpoint exposed by Ollama.
 - `sk-ant-...` — Anthropic (not supported, errors with guidance)
 - `REPLAY_LAT_LLM_KEY::<url>` — test-only replay server for offline testing
 
@@ -363,6 +388,14 @@ Implementation: [[src/search/index.ts]]
 Embeds the user's query via the same provider, then runs a `vector_top_k()` KNN query joined back to the sections table.
 
 Implementation: [[src/search/search.ts]]
+
+### Reranking (optional)
+
+When configured, search reranks vector candidates via a local HTTP endpoint before returning results.
+
+Search retrieves `max(limit, reranker_top_k)` vector candidates, sends them to `POST /v1/rerank`, then returns the top `limit`. If reranking is not configured, or reranking fails, search falls back to vector order.
+
+Implementation: [[src/cli/search.ts#runSearch]], [[src/search/reranker.ts#rerankSections]], [[src/config.ts#getRerankerConfig]]
 
 ## Section Preview
 

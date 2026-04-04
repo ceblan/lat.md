@@ -35,7 +35,7 @@ describe('detectProvider', () => {
     const p = detectProvider('ollama:qwen3-embedding:8b');
     expect(p.name).toBe('ollama');
     expect(p.model).toBe('qwen3-embedding:8b');
-    expect(p.apiBase).toBe('http://localhost:11434/v1');
+    expect(p.apiBase).toBe('http://192.168.100.1:11434/v1');
   });
 
   it('detects Ollama key with custom base URL', () => {

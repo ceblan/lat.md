@@ -47,6 +47,82 @@ It wraps the `ignore-walk` npm package to ensure `.gitignore` rules are consiste
 
 Prettier with no semicolons, single quotes, trailing commas. Run `pnpm format` before committing.
 
+## Maintaining Local Patches
+
+Use a small, replayable patch stack so you can pull upstream frequently without long-lived divergence.
+
+### Recommended Branch Model
+
+Keep upstream and local work separate to make rebases predictable.
+
+- `upstream/main` (remote tracking) — untouched mirror of upstream
+- `main` (local) — fast-forwarded to `upstream/main`
+- `patch/nested-lat-repo-sync` — your local customization branch
+
+Create once:
+
+```bash
+git fetch upstream
+git checkout main
+git reset --hard upstream/main
+git checkout -B patch/nested-lat-repo-sync
+```
+
+### Update Routine (after every upstream pull)
+
+Rebase your patch branch onto the latest upstream and re-run the focused checks.
+
+```bash
+git fetch upstream
+git checkout patch/nested-lat-repo-sync
+git rebase upstream/main
+pnpm build
+pnpm test tests/hook.test.ts
+lat check
+```
+
+If conflicts occur, resolve and continue:
+
+```bash
+git add <files>
+git rebase --continue
+```
+
+### Local helper script
+
+A local convenience script lives at `lat.md/sbin/up-patch` and automates the fetch→rebase→checks flow.
+
+```bash
+lat.md/sbin/up-patch
+```
+
+It is intentionally ignored via `lat.md/.gitignore` (`sbin/`) so it can remain a per-clone local utility without affecting `lat check` index rules.
+
+### Keep the Patch Small and Stable
+
+Minimize churn by isolating nested-repo sync behavior in a shared helper and reusing hook logic across agents.
+
+Current high-conflict files for this patch:
+
+- `src/sync-status.ts` (new helper; keep self-contained)
+- `src/cli/hook.ts` (imports helper and uses shared diff analysis)
+- `templates/pi-extension.ts` (delegates to `lat hook cursor stop`)
+- `tests/hook.test.ts` + `lat.md/tests/hook.md` (behavior coverage + spec)
+- `lat.md/cli.md` (user-facing behavior docs)
+
+### Recovery Strategy if Rebase Gets Messy
+
+Regenerate your patch branch from upstream and re-apply only the minimal commits.
+
+```bash
+git checkout main
+git reset --hard upstream/main
+git checkout -B patch/nested-lat-repo-sync
+git cherry-pick <patch-commit-1> <patch-commit-2>
+```
+
+Prefer a few focused commits (helper, hook wiring, tests/docs) over one large commit; this makes cherry-pick recovery much easier.
+
 ## Publishing
 
 Published to npm as `lat.md`. The `bin` entry exposes the `lat` command. Only `dist/src` is included in the package — tests and the [[website]] are excluded.

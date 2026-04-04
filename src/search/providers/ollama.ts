@@ -1,6 +1,6 @@
 import type { EmbeddingProvider } from '../provider.js';
 
-const DEFAULT_OLLAMA_BASE_URL = 'http://localhost:11434';
+const DEFAULT_OLLAMA_BASE_URL = 'http://192.168.100.1:11434';
 const DEFAULT_OLLAMA_MODEL = 'qwen3-embedding:8b';
 
 function ollamaProvider(model: string, baseUrl?: string): EmbeddingProvider {

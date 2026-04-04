@@ -285,71 +285,27 @@ export default function (pi: ExtensionAPI) {
     if (agentEndFired) return;
     agentEndFired = true;
 
-    // Run lat check
-    let checkOutput: string;
-    let checkFailed = false;
+    // Delegate stop checks to lat's centralized hook logic.
+    // Reuses the same behavior as Cursor/Claude integration, so Pi stays in sync
+    // with future stop-check improvements (including nested lat.md repos).
+    const raw = tryRun(["hook", "cursor", "stop"]).trim();
+    if (!raw) return;
+
+    let reason = "";
     try {
-      checkOutput = run(["check"]);
-    } catch (err: unknown) {
-      checkFailed = true;
-      checkOutput = (err as { stdout?: string }).stdout || "";
-    }
-
-    // Run git diff --numstat to check if lat.md/ is in sync
-    let needsSync = false;
-    let codeLines = 0;
-    try {
-      const { execSync } = require("child_process") as typeof import("child_process");
-      const numstat = execSync("git diff HEAD --numstat", {
-        encoding: "utf-8",
-        cwd: process.cwd(),
-      });
-
-      let latMdLines = 0;
-      for (const line of numstat.split("\n")) {
-        const parts = line.split("\t");
-        if (parts.length < 3) continue;
-        const added = parseInt(parts[0], 10) || 0;
-        const removed = parseInt(parts[1], 10) || 0;
-        const file = parts[2];
-        const changed = added + removed;
-        if (file.startsWith("lat.md/")) {
-          latMdLines += changed;
-        } else if (/\.(ts|tsx|js|jsx|py|rs|go|c|h)$/.test(file)) {
-          codeLines += changed;
-        }
-      }
-
-      if (codeLines >= 5) {
-        const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);
-        needsSync = effectiveLatMd < codeLines * 0.05;
+      const parsed = JSON.parse(raw) as { followup_message?: unknown };
+      if (typeof parsed.followup_message === "string") {
+        reason = parsed.followup_message;
       }
     } catch {
-      // git not available or no HEAD — skip diff check
+      // If output isn't JSON for any reason, fall back to raw text.
+      reason = raw;
     }
 
-    if (!checkFailed && !needsSync) return;
-
-    const parts: string[] = [];
-    if (checkFailed && needsSync) {
-      parts.push(
-        `\`lat check\` found errors AND the codebase has changes (${codeLines} lines) with no updates to \`lat.md/\`. Before finishing:`,
-        "",
-        "1. Update `lat.md/` to reflect your code changes — run `lat_search` to find relevant sections.",
-        "2. Run `lat_check` until it passes.",
-      );
-    } else if (checkFailed) {
-      parts.push(
-        "`lat check` failed. Run `lat_check`, fix the errors, and repeat until it passes.",
-      );
-    } else {
-      parts.push(
-        `The codebase has changes (${codeLines} lines) but \`lat.md/\` was not updated. Update \`lat.md/\` to be in sync with the changes — run \`lat_search\` to find relevant sections. Run \`lat_check\` at the end.`,
-      );
-    }
+    if (!reason) return;
 
     pi.sendMessage(
-      { customType: "lat-check", content: parts.join("\n"), display: true },
+      { customType: "lat-check", content: reason, display: true },
       { deliverAs: "followUp", triggerTurn: true },
     );
   });

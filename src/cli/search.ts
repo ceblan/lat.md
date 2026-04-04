@@ -3,12 +3,14 @@ import { openDb, ensureSchema, closeDb } from '../search/db.js';
 import { detectProvider } from '../search/provider.js';
 import { indexSections, type IndexStats } from '../search/index.js';
 import { searchSections } from '../search/search.js';
+import { rerankSections } from '../search/reranker.js';
 import {
   loadAllSections,
   flattenSections,
   type SectionMatch,
 } from '../lattice.js';
 import { formatResultList, formatNavHints } from '../format.js';
+import type { RerankerConfig } from '../config.js';
 
 export type SearchResult = {
   query: string;
@@ -60,11 +62,21 @@ export async function runSearch(
   key: string,
   limit: number,
   progress?: IndexProgress,
+  reranker?: RerankerConfig,
 ): Promise<SearchResult> {
   return withDb(latDir, key, progress, async (db, provider) => {
-    const results = await searchSections(db, query, provider, key, limit);
+    const initialK = reranker ? Math.max(limit, reranker.topK) : limit;
+    let results = await searchSections(db, query, provider, key, initialK);
     if (results.length === 0) {
       return { query, matches: [] };
+    }
+
+    if (reranker) {
+      try {
+        results = await rerankSections(query, results, reranker);
+      } catch {
+        // Soft-fail: if reranking is unavailable, keep vector ranking.
+      }
     }
 
     const allSections = await loadAllSections(latDir);
@@ -72,6 +84,7 @@ export async function runSearch(
     const byId = new Map(flat.map((s) => [s.id, s]));
 
     const matches = results
+      .slice(0, limit)
       .map((r) => byId.get(r.id))
       .filter((s): s is NonNullable<typeof s> => !!s)
       .map((s) => ({ section: s, reason: 'semantic match' }));
@@ -123,10 +136,13 @@ export async function searchCommand(
   opts: { limit: number; reindex?: boolean },
   progress?: IndexProgress,
 ): Promise<CmdResult> {
-  const { getLlmKey, getConfigPath } = await import('../config.js');
+  const { getLlmKey, getConfigPath, getRerankerConfig } =
+    await import('../config.js');
   let key: string | undefined;
+  let reranker: RerankerConfig | undefined;
   try {
     key = getLlmKey();
+    reranker = getRerankerConfig();
   } catch (err) {
     return { output: (err as Error).message, isError: true };
   }
@@ -150,7 +166,14 @@ export async function searchCommand(
     return { output: '' };
   }
 
-  const result = await runSearch(ctx.latDir, query, key, opts.limit, progress);
+  const result = await runSearch(
+    ctx.latDir,
+    query,
+    key,
+    opts.limit,
+    progress,
+    reranker,
+  );
 
   if (result.matches.length === 0) {
     return { output: 'No results found.' };

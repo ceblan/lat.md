@@ -44,6 +44,10 @@ On the second pass, if `lat check` still fails, the hook prints a warning to std
 
 Files that don't match `SOURCE_EXTENSIONS` (e.g. `.md`) are not counted toward code lines, so a large markdown-only diff does not trigger a sync reminder.
 
+## Uses nested lat.md repo diff when lat.md has its own .git
+
+When `lat.md/` contains its own `.git` directory, the hook reads code diff from the main repo and `lat.md` diff from the nested repo so sync checks still work with split repositories.
+
 ## Cursor stop hook returns follow-up work instead of a Claude block
 
 When Cursor needs more work at stop time, the hook returns a `followup_message` payload instead of Claude's `decision: "block"` shape so the agent keeps going in Cursor's native hook format.

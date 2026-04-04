@@ -17,6 +17,9 @@ export function getConfigPath(): string {
 
 export type LatConfig = {
   llm_key?: string;
+  reranker_model?: string;
+  reranker_api_base?: string;
+  reranker_top_k?: number;
 };
 
 export function readConfig(): LatConfig {
@@ -78,4 +81,44 @@ export function getLlmKey(): string | undefined {
   if (config.llm_key) return config.llm_key;
 
   return undefined;
+}
+
+export type RerankerConfig = {
+  model: string;
+  apiBase: string;
+  topK: number;
+};
+
+/**
+ * Returns optional reranker configuration.
+ *
+ * Activated only if a model is configured via:
+ * 1. LAT_RERANKER_MODEL env var
+ * 2. reranker_model field in ~/.config/lat/config.json
+ *
+ * Optional overrides:
+ * - LAT_RERANKER_API_BASE / reranker_api_base (default: http://localhost:8082)
+ * - LAT_RERANKER_TOP_K / reranker_top_k (default: 20)
+ */
+export function getRerankerConfig(): RerankerConfig | undefined {
+  const config = readConfig();
+
+  const model = process.env.LAT_RERANKER_MODEL || config.reranker_model;
+  if (!model) return undefined;
+
+  const apiBase =
+    process.env.LAT_RERANKER_API_BASE ||
+    config.reranker_api_base ||
+    'http://localhost:8082';
+
+  const rawTopK = process.env.LAT_RERANKER_TOP_K ?? config.reranker_top_k;
+  const topK = rawTopK === undefined ? 20 : Number(rawTopK);
+
+  if (!Number.isFinite(topK) || topK <= 0) {
+    throw new Error(
+      `Invalid reranker top_k value: ${rawTopK}. Expected a positive number.`,
+    );
+  }
+
+  return { model, apiBase, topK: Math.floor(topK) };
 }
