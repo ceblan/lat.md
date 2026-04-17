@@ -67,15 +67,18 @@ Each tool shells out to the `lat` CLI and provides custom rendering:
 
 The extension runs stop checks to ensure lat.md stays synchronized with the codebase:
 
-1. **Runs `lat hook cursor stop`** — delegates to lat's centralized hook logic
-2. **Analyzes git diff** to detect code changes vs lat.md changes
-3. **Displays warning** if lat.md needs updates
+1. **Launches subagent process** — spawns a separate `lat check` process to run validation
+2. **Shows minimal status** — displays "🔍 lat check running..." while in progress
+3. **Reports results compactly** — shows "✓ lat OK" on success with collapsed details
 
-The hook logic:
-- Always runs `lat check` to validate links and code refs
-- Compares `codeLines` vs `latMdLines` from git diff
-- Flags work when `latMdLines < codeLines * 5%` (below 5% ratio)
-- Sends a visible follow-up message if action is required
+**Subagent workflow:**
+- Registers journal hooks before lat hooks so journal writes happen first in `agent_end`
+- Spawns a worker subprocess at `agent_end`
+- Worker runs `lat check`, auto-fixes known recurring journal link patterns, and repeats (max 6 runs)
+- Main extension waits for worker completion (90s timeout) and parses worker JSON summary
+- Worker reports resolved error count plus how many were reintroduced-link fixes in that cycle
+- If successful, extension runs `lat hook cursor stop` to verify sync and emits compact "lat OK" output
+- Falls back to inline stop-check flow if the worker cannot fully resolve errors
 
 This behavior is shared across all agents (Cursor, Claude, Pi) via the same `lat hook cursor stop` command. See [[cli#hook]] for complete details on stop hook behavior, including handling of nested lat.md repos.
 
@@ -173,3 +176,30 @@ Related documentation for deeper technical details and related topics.
 - [[cli#init#Pi]] — Technical details of Pi setup
 - [[cli#hook]] — Hook event handling and stop-check logic
 - [[markdown]] — lat.md markdown extensions (wiki links, frontmatter)
+
+## Extension Development Research
+
+Research findings on Pi's extension system capabilities for implementing custom features.
+
+### Journal Extension Research
+
+Comprehensive analysis of Pi's extension API for implementing a daily session journal feature that stores entries in `lat.md/journals/YYYY-MM-DD.md`.
+
+Pi's extension system provides excellent support for session journaling through:
+
+**Lifecycle Hooks:** Complete coverage of session events (`session_start`, `session_shutdown`, `agent_start`, `agent_end`) and message events (`message_start`, `message_end`, `tool_execution_*`) for capturing all user interactions and agent responses.
+
+**Session Data Access:** Rich session data via `ctx.sessionManager.getBranch()` providing access to all conversation messages, tool calls, and metadata with proper branching support.
+
+**Message Extraction:** Well-structured message types (`UserMessage`, `AssistantMessage`, `ToolResultMessage`) with typed content blocks enabling extraction of user prompts, assistant responses, and tool usage patterns.
+
+**State Management:** Multiple approaches available - file-based persistence for long-term storage, session-based state for current activity, or hybrid approaches combining both.
+
+The research identified three implementation approaches:
+1. **File-based** (recommended): Direct writing to journal markdown files with immediate persistence  
+2. **Session-based**: Using Pi's `appendEntry()` for state management with export commands
+3. **Hybrid**: Session state for current activity plus file persistence for historical records
+
+Full research details and implementation examples documented in [[journal-research#Pi Extension System Research: Daily Journal Implementation]].
+
+See also: [[journal-research#Pi Extension System Research: Daily Journal Implementation]] — Complete Pi extension API research and implementation approaches for daily session journaling.
