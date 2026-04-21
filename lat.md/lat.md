@@ -10,4 +10,3 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[website]] — Standalone Next.js marketing site deployed to Vercel
 - [[pi-integration]] — How lat.md integrates with the pi coding agent
 - [[log]] — Investigation logs and session artifacts
-- [[journals]] — Pi session journals capturing daily activity summaries and documentation changes
