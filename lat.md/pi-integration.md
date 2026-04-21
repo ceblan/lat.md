@@ -67,24 +67,27 @@ Each tool shells out to the `lat` CLI and provides custom rendering:
 
 The extension runs stop checks to ensure lat.md stays synchronized with the codebase:
 
-1. **Spawns documenter subagent** — launches a `pi` subprocess with `--mode json -p --no-session` to run the `documenter` agent (defined at `~/.pi/agent/agents/documenter.md`) in isolation
-2. **Shows minimal status** — displays "🔍 lat check running..." while in progress
+1. **Spawns documentator subagent** — launches a `pi` subprocess with `--mode json -p --no-session` to run the `documentator` agent (defined at `~/.pi/agent/agents/documentator.md`) in isolation
+2. **Shows progress in footer** — updates the footer status bar via `ctx.ui.setStatus()` with the current tool call while running (no conversation message is injected — see note below)
 3. **Reports results compactly** — shows "✓ lat OK" on success (collapsed by default). When expanded (Ctrl+O), the message includes a short run footer with:
    - tool call count
    - assistant iteration count
    - duration
-   - documenter log file path (`lat.md/log/YYYYMMDDhhmmss.txt`)
+   - documentator log file path (`/tmp/lat.log/YYYYMMDDhhmmss.txt`)
 
 **Documenter subagent workflow:**
-- Spawns `pi --mode json -p --no-session --model zai/glm-5-turbo` at `agent_end`
-- In `-p --no-session` mode, `agent_end` hooks don't fire, so there's no recursive subprocess risk
+- Spawns `pi --mode json -p --no-session --model zai/glm-5-turbo` at `agent_end`, passing `LAT_DOCUMENTER=1` as an environment variable
+- **`agent_end` hooks DO fire in `-p --no-session` mode** — the `LAT_DOCUMENTER=1` env var is the actual re-entrancy guard: it is checked at the very start of the `agent_end` handler in the subprocess and causes an immediate return, preventing infinite subprocess chains
 - Documenter runs `lat check` and repeats (max 6 iterations)
-- Auto-fix rules live in `~/.pi/agent/agents/documenter.md` under the "Auto-Fix Rules for Recurring Link Reintroductions" section
+- Auto-fix rules live in `~/.pi/agent/agents/documentator.md` under the "Auto-Fix Rules for Recurring Link Reintroductions" section
 - Main extension waits for subagent completion (120s timeout) and parses the structured JSON status block from the final assistant message
 - Documenter returns `{ status, resolvedErrors, reintroducedFixed, summary }` as its last output
 - If `status: "ok"`, extension runs `lat hook cursor stop` to verify sync and emits compact "lat OK" output
-- If `status: "partial"`, shows check warnings with the documenter's summary
+- If `status: "partial"`, shows check warnings with the documentator's summary
 - Falls back to inline stop-check flow if the subagent process fails (crash, timeout, parse error)
+- Log files are written to `/tmp/lat.log/` (outside `lat.md/`) to prevent the documentator from treating them as stray files
+
+> **Note on `sendMessage` in `agent_end`:** injecting a custom message with `deliverAs: "followUp"` during `agent_end` is unsafe — if `isStreaming` is still `true` at that moment, the `triggerTurn` option is bypassed and the message is delivered via `agent.followUp()`, which can trigger an API call with a conversation ending in `assistant`. Models that don't support assistant-message prefill (e.g. GLM) return a 400 error. Progress feedback during documentator execution therefore uses `ctx.ui.setStatus()` exclusively.
 
 This behavior is shared across all agents (Cursor, Claude, Pi) via the same `lat hook cursor stop` command. See [[cli#hook]] for complete details on stop hook behavior, including handling of nested lat.md repos.
 
@@ -105,6 +108,8 @@ project/
 ├── AGENTS.md               # Shared agent instructions
 └── .gitignore             # Updated to ignore .pi/
 ```
+
+Documenter subprocess logs are written to `/tmp/lat.log/` (outside the project tree) so they are never picked up by `lat check` as stray files.
 
 ## Role of AGENTS.md
 

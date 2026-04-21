@@ -52,7 +52,7 @@ function tryRun(args: string[]): string {
 }
 
 /**
- * Parse the documenter subagent's NDJSON stdout to extract the structured
+ * Parse the documentator subagent's NDJSON stdout to extract the structured
  * JSON status block from the final assistant message.
  */
 function parseDocumenterOutput(stdout: string): {
@@ -307,22 +307,6 @@ export default async function (pi: ExtensionAPI) {
     return box;
   });
 
-  // Renderer for status message when lat check is running
-  pi.registerMessageRenderer("lat-check-status", (message, { expanded }, theme) => {
-    const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
-    if (expanded) {
-      box.addChild(new Text(theme.fg("dim", "🔍 lat check running in background..."), 0, 0));
-    } else {
-      const hint = keyHint("expandTools", "to expand");
-      box.addChild(new Text(
-        theme.fg("dim", "🔍 lat check running...") + " " +
-        theme.fg("dim", `(${hint})`),
-        0, 0,
-      ));
-    }
-    return box;
-  });
-
   // Renderer for successful completion (collapsed by default, expandable)
   pi.registerMessageRenderer("lat-ok", (message, { expanded }, theme) => {
     const box = new Box(1, 1, (t) => theme.bg("customMessageBg", t));
@@ -381,6 +365,10 @@ export default async function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async (_event, ctx) => {
+    // Guard: don't spawn a documentator if we ARE the documentator subprocess.
+    // agent_end DOES fire in -p --no-session mode, so without this guard
+    // every documentator would spawn another documentator → infinite loop.
+    if (process.env.LAT_DOCUMENTER === "1") return;
     // Prevent loops and duplicates
     if (agentEndFired || latCheckInProgress || latCheckCompletedForPrompt) return;
     agentEndFired = true;
@@ -391,34 +379,35 @@ export default async function (pi: ExtensionAPI) {
     const latDir = path.join(process.cwd(), "lat.md");
     if (!fs.existsSync(latDir)) return;
 
-    // Launch documenter subagent to run lat check in a separate process
+    // Launch documentator subagent to run lat check in a separate process
     latCheckInProgress = true;
 
     const { spawn } = require("child_process") as typeof import("node:child_process");
 
-    // Spawn the `documenter` agent as an isolated pi subprocess.
-    // --no-session for ephemeral execution (agent_end hooks don't fire in -p --no-session mode),
-    // --mode json for parseable NDJSON output.
-    // No -ne flag needed: agent_end hooks don't fire in -p --no-session mode,
-    // and the lat tools (lat_check) are available for the documenter to use.
+    // Spawn the `documentator` agent as an isolated pi subprocess.
+    // --no-session for ephemeral execution, --mode json for parseable NDJSON output.
+    // NOTE: agent_end hooks DO fire in -p --no-session mode. The LAT_DOCUMENTER=1
+    // env var is the actual re-entrancy guard (see check at top of this handler).
     const piBin = process.env.PI_BIN || "pi";
-    const documenterTask = "Run post-task lat.md sync check ONLY. Skip Steps 1-2 (commits, @lat tags). Execute Step 3 (link integrity with auto-fix loop). Then end your response with the required JSON status block.";
+    const documentatorTask = "Run post-task lat.md sync check ONLY. Skip Steps 1-2 (commits, @lat tags). Execute Step 3 (link integrity with auto-fix loop). Then end your response with the required JSON status block.";
 
-    // ── Documenter subprocess logging (Phase 1) ─────────────────────
-    // Create lat.md/log/ if needed and tee stdout/stderr into a timestamped .txt file.
+    // ── Documenter subprocess logging ────────────────────────────────
+    // Use /tmp/lat.log/ for logs, NOT lat.md/log/ — the documentator treats
+    // any .txt file inside lat.md/ as a stray file and tries to move/delete it.
     const startTime = new Date();
     const pad2 = (n: number) => String(n).padStart(2, "0");
     const timestamp = `${startTime.getFullYear()}${pad2(startTime.getMonth() + 1)}${pad2(startTime.getDate())}${pad2(startTime.getHours())}${pad2(startTime.getMinutes())}${pad2(startTime.getSeconds())}`;
-    const logDir = path.join(latDir, "log");
+    const os = require("os") as typeof import("node:os");
+    const logDir = path.join(os.tmpdir(), "lat.log");
     const logPath = path.join(logDir, `${timestamp}.txt`);
 
     let logStream: import("node:fs").WriteStream | null = null;
     try {
       fs.mkdirSync(logDir, { recursive: true });
       logStream = fs.createWriteStream(logPath, { flags: "a" });
-      logStream.write("=== documenter subprocess log ===\n");
+      logStream.write("=== documentator subprocess log ===\n");
       logStream.write(`Started: ${startTime.toISOString()}\n`);
-      logStream.write(`Task: ${documenterTask}\n\n`);
+      logStream.write(`Task: ${documentatorTask}\n\n`);
     } catch {
       // If logging fails, continue without affecting lat-ok/lat-check behavior.
       logStream = null;
@@ -427,14 +416,17 @@ export default async function (pi: ExtensionAPI) {
     const subagentProcess = spawn(piBin, [
       "--mode", "json", "-p", "--no-session",
       "--model", "zai/glm-5-turbo",
-      documenterTask,
+      documentatorTask,
     ], {
       cwd: process.cwd(),
+      // LAT_DOCUMENTER=1 tells the lat.ts extension loaded inside the subprocess
+      // not to spawn another documentator when agent_end fires there.
+      env: { ...process.env, LAT_DOCUMENTER: "1" },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
     // Phase 2: real-time TUI visibility (status bar only; no incremental messages).
-    if (ctx?.hasUI) ctx.ui.setStatus("lat-doc", "🔍 documenter: starting...");
+    if (ctx?.hasUI) ctx.ui.setStatus("lat-doc", "🔍 documentator: starting...");
 
     // Parse NDJSON event stream to count tool calls and assistant iterations.
     // Also update the status bar on tool starts.
@@ -458,7 +450,7 @@ export default async function (pi: ExtensionAPI) {
             if (ctx?.hasUI) {
               const rawToolName = evt.toolName ?? evt.tool ?? evt.tool_name ?? evt.name;
               const toolName = typeof rawToolName === "string" ? rawToolName : "tool";
-              const next = `🔍 documenter: ${toolName}`;
+              const next = `🔍 documentator: ${toolName}`;
               if (next !== lastStatus) {
                 ctx.ui.setStatus("lat-doc", next);
                 lastStatus = next;
@@ -471,12 +463,6 @@ export default async function (pi: ExtensionAPI) {
         }
       }
     };
-
-    // Show minimal status indicator while running
-    pi.sendMessage(
-      { customType: "lat-check-status", content: "", display: true },
-      { deliverAs: "followUp", triggerTurn: false }
-    );
 
     const checkResult = await new Promise<{
       ok: boolean;
@@ -512,7 +498,7 @@ export default async function (pi: ExtensionAPI) {
             ? "timeout"
             : (result.exitCode === null ? "null" : String(result.exitCode));
 
-          logStream.write("\n=== documenter subprocess finished ===\n");
+          logStream.write("\n=== documentator subprocess finished ===\n");
           logStream.write(`Exit code: ${exitCodeText}\n`);
           logStream.write(`Tool calls: ${toolCalls}\n`);
           logStream.write(`Iterations: ${iterations}\n`);
@@ -533,7 +519,7 @@ export default async function (pi: ExtensionAPI) {
         } catch {
           // ignore kill errors
         }
-        finish({ ok: false, stdout, stderr: `${stderr}\ndocumenter subagent timed out after 120s`, timedOut: true, exitCode: null });
+        finish({ ok: false, stdout, stderr: `${stderr}\ndocumentator subagent timed out after 120s`, timedOut: true, exitCode: null });
       }, 120_000);
 
       subagentProcess.stdout.on("data", (data: Buffer) => {
@@ -561,7 +547,7 @@ export default async function (pi: ExtensionAPI) {
     });
 
     // Parse the final assistant message from the NDJSON event stream.
-    // The documenter agent emits a JSON status block as its last output.
+    // The documentator agent emits a JSON status block as its last output.
     const payload = parseDocumenterOutput(checkResult.stdout);
 
     latCheckInProgress = false;
@@ -580,8 +566,8 @@ export default async function (pi: ExtensionAPI) {
       await runLatHookAndShowResult(payload.resolvedErrors, payload.summary, payload.reintroducedFixed, hasErrors, stats);
     } else {
       // Fallback to inline execution if subagent failed
-      const errMsg = checkResult.stderr || checkResult.stdout || "documenter subagent failed";
-      await runLatCheckInline(checkResult.timedOut ? `documenter subagent timed out after 120s` : errMsg, existingLogPath);
+      const errMsg = checkResult.stderr || checkResult.stdout || "documentator subagent failed";
+      await runLatCheckInline(checkResult.timedOut ? `documentator subagent timed out after 120s` : errMsg, existingLogPath);
     }
 
     async function runLatHookAndShowResult(
@@ -593,7 +579,7 @@ export default async function (pi: ExtensionAPI) {
     ): Promise<void> {
       const raw = tryRun(["hook", "cursor", "stop"]).trim();
       const workerPrefix = resolvedErrors > 0
-        ? `documenter resolved ${resolvedErrors} error(s) (${reintroducedFixed} reintroduced-link fix(es)). ${workerSummary}`
+        ? `documentator resolved ${resolvedErrors} error(s) (${reintroducedFixed} reintroduced-link fix(es)). ${workerSummary}`
         : (workerSummary || "lat.md is in sync with the codebase.");
 
       const statsFooter = stats
@@ -690,7 +676,7 @@ export default async function (pi: ExtensionAPI) {
 
     pi.sendMessage(
       { customType: "lat-check", content: reason + logFooter, display: true },
-      { deliverAs: "followUp", triggerTurn: true },
+      { deliverAs: "followUp", triggerTurn: false },
     );
   }
 }
