@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getMarkdownTheme, keyHint } from "@mariozechner/pi-coding-agent";
 import type { Theme } from "@mariozechner/pi-tui";
 import { Box, Markdown, Text } from "@mariozechner/pi-tui";
-import journalExtension from "./journal.js";
+// import journalExtension from "./journal.js";
 
 const PREVIEW_LINES = 4;
 
@@ -345,7 +345,7 @@ export default async function (pi: ExtensionAPI) {
   // Register journal extension first so its agent_end hook runs before
   // lat worker checks. This prevents journal writes from reintroducing
   // broken refs after lat validation in the same turn.
-  await journalExtension(pi);
+  // await journalExtension(pi);
 
   // ── Lifecycle hooks ────────────────────────────────────────────────
 
@@ -380,21 +380,21 @@ export default async function (pi: ExtensionAPI) {
     };
   });
 
-  pi.on("agent_end", async () => {
+  pi.on("agent_end", async (_event, ctx) => {
     // Prevent loops and duplicates
     if (agentEndFired || latCheckInProgress || latCheckCompletedForPrompt) return;
     agentEndFired = true;
 
     // Check if lat.md directory exists
-    const { existsSync } = require("fs");
-    const { join } = require("path");
-    const latDir = join(process.cwd(), "lat.md");
-    if (!existsSync(latDir)) return;
+    const fs = require("fs") as typeof import("node:fs");
+    const path = require("path") as typeof import("node:path");
+    const latDir = path.join(process.cwd(), "lat.md");
+    if (!fs.existsSync(latDir)) return;
 
     // Launch documenter subagent to run lat check in a separate process
     latCheckInProgress = true;
 
-    const { spawn } = require("child_process");
+    const { spawn } = require("child_process") as typeof import("node:child_process");
 
     // Spawn the `documenter` agent as an isolated pi subprocess.
     // --no-session for ephemeral execution (agent_end hooks don't fire in -p --no-session mode),
@@ -404,6 +404,26 @@ export default async function (pi: ExtensionAPI) {
     const piBin = process.env.PI_BIN || "pi";
     const documenterTask = "Run post-task lat.md sync check ONLY. Skip Steps 1-2 (commits, @lat tags). Execute Step 3 (link integrity with auto-fix loop). Then end your response with the required JSON status block.";
 
+    // ── Documenter subprocess logging (Phase 1) ─────────────────────
+    // Create lat.md/log/ if needed and tee stdout/stderr into a timestamped .txt file.
+    const startTime = new Date();
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const timestamp = `${startTime.getFullYear()}${pad2(startTime.getMonth() + 1)}${pad2(startTime.getDate())}${pad2(startTime.getHours())}${pad2(startTime.getMinutes())}${pad2(startTime.getSeconds())}`;
+    const logDir = path.join(latDir, "log");
+    const logPath = path.join(logDir, `${timestamp}.txt`);
+
+    let logStream: import("node:fs").WriteStream | null = null;
+    try {
+      fs.mkdirSync(logDir, { recursive: true });
+      logStream = fs.createWriteStream(logPath, { flags: "a" });
+      logStream.write("=== documenter subprocess log ===\n");
+      logStream.write(`Started: ${startTime.toISOString()}\n`);
+      logStream.write(`Task: ${documenterTask}\n\n`);
+    } catch {
+      // If logging fails, continue without affecting lat-ok/lat-check behavior.
+      logStream = null;
+    }
+
     const subagentProcess = spawn(piBin, [
       "--mode", "json", "-p", "--no-session",
       "--model", "zai/glm-5-turbo",
@@ -412,6 +432,45 @@ export default async function (pi: ExtensionAPI) {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
     });
+
+    // Phase 2: real-time TUI visibility (status bar only; no incremental messages).
+    if (ctx?.hasUI) ctx.ui.setStatus("lat-doc", "🔍 documenter: starting...");
+
+    // Parse NDJSON event stream to count tool calls and assistant iterations.
+    // Also update the status bar on tool starts.
+    let toolCalls = 0;
+    let iterations = 0;
+    let durationMs = 0;
+    let ndjsonBuffer = "";
+    let lastStatus: string | null = null;
+    const parseNdjsonChunk = (chunk: string) => {
+      ndjsonBuffer += chunk;
+      while (true) {
+        const newlineIdx = ndjsonBuffer.indexOf("\n");
+        if (newlineIdx === -1) break;
+        const line = ndjsonBuffer.slice(0, newlineIdx).trim();
+        ndjsonBuffer = ndjsonBuffer.slice(newlineIdx + 1);
+        if (!line) continue;
+        try {
+          const evt = JSON.parse(line);
+          if (evt.type === "tool_execution_start") {
+            toolCalls++;
+            if (ctx?.hasUI) {
+              const rawToolName = evt.toolName ?? evt.tool ?? evt.tool_name ?? evt.name;
+              const toolName = typeof rawToolName === "string" ? rawToolName : "tool";
+              const next = `🔍 documenter: ${toolName}`;
+              if (next !== lastStatus) {
+                ctx.ui.setStatus("lat-doc", next);
+                lastStatus = next;
+              }
+            }
+          }
+          if (evt.type === "message_end" && evt.message?.role === "assistant") iterations++;
+        } catch {
+          // ignore non-JSON lines
+        }
+      }
+    };
 
     // Show minimal status indicator while running
     pi.sendMessage(
@@ -424,46 +483,80 @@ export default async function (pi: ExtensionAPI) {
       stdout: string;
       stderr: string;
       timedOut: boolean;
+      exitCode: number | null;
     }>((resolve) => {
       let stdout = "";
       let stderr = "";
       let done = false;
+      let timer: NodeJS.Timeout;
 
       const finish = (result: {
         ok: boolean;
         stdout: string;
         stderr: string;
         timedOut: boolean;
+        exitCode: number | null;
       }) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
+
+        // Flush any remaining NDJSON line and write footer.
+        parseNdjsonChunk("\n");
+
+        const endTime = new Date();
+        durationMs = endTime.getTime() - startTime.getTime();
+
+        if (logStream) {
+          const exitCodeText = result.timedOut
+            ? "timeout"
+            : (result.exitCode === null ? "null" : String(result.exitCode));
+
+          logStream.write("\n=== documenter subprocess finished ===\n");
+          logStream.write(`Exit code: ${exitCodeText}\n`);
+          logStream.write(`Tool calls: ${toolCalls}\n`);
+          logStream.write(`Iterations: ${iterations}\n`);
+          logStream.write(`Duration: ${(durationMs / 1000).toFixed(1)}s\n`);
+          logStream.write(`Finished: ${endTime.toISOString()}\n`);
+          logStream.end();
+          logStream = null;
+        }
+
+        if (ctx?.hasUI) ctx.ui.setStatus("lat-doc", undefined);
+
         resolve(result);
       };
 
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         try {
           subagentProcess.kill("SIGKILL");
         } catch {
           // ignore kill errors
         }
-        finish({ ok: false, stdout, stderr: `${stderr}\ndocumenter subagent timed out after 120s`, timedOut: true });
+        finish({ ok: false, stdout, stderr: `${stderr}\ndocumenter subagent timed out after 120s`, timedOut: true, exitCode: null });
       }, 120_000);
 
       subagentProcess.stdout.on("data", (data: Buffer) => {
-        stdout += data.toString();
+        if (done) return;
+        const text = data.toString();
+        stdout += text;
+        if (logStream) logStream.write(text);
+        parseNdjsonChunk(text);
       });
 
       subagentProcess.stderr.on("data", (data: Buffer) => {
-        stderr += data.toString();
+        if (done) return;
+        const text = data.toString();
+        stderr += text;
+        if (logStream) logStream.write(text);
       });
 
       subagentProcess.on("error", (err: Error) => {
-        finish({ ok: false, stdout, stderr: `${stderr}\n${err.message}`.trim(), timedOut: false });
+        finish({ ok: false, stdout, stderr: `${stderr}\n${err.message}`.trim(), timedOut: false, exitCode: null });
       });
 
       subagentProcess.on("close", (code: number | null) => {
-        finish({ ok: code === 0, stdout, stderr, timedOut: false });
+        finish({ ok: code === 0, stdout, stderr, timedOut: false, exitCode: code });
       });
     });
 
@@ -473,27 +566,46 @@ export default async function (pi: ExtensionAPI) {
 
     latCheckInProgress = false;
 
+    let existingLogPath: string | undefined;
+    try {
+      if (fs.existsSync(logPath)) existingLogPath = logPath;
+    } catch {
+      // ignore existsSync errors
+    }
+
     if (payload && (payload.status === "ok" || payload.status === "partial")) {
       // Run lat hook cursor stop to verify sync status
       const hasErrors = payload.status === "partial";
-      await runLatHookAndShowResult(payload.resolvedErrors, payload.summary, payload.reintroducedFixed, hasErrors);
+      const stats = { logPath: existingLogPath, toolCalls, iterations, durationMs };
+      await runLatHookAndShowResult(payload.resolvedErrors, payload.summary, payload.reintroducedFixed, hasErrors, stats);
     } else {
       // Fallback to inline execution if subagent failed
       const errMsg = checkResult.stderr || checkResult.stdout || "documenter subagent failed";
-      await runLatCheckInline(checkResult.timedOut ? `documenter subagent timed out after 120s` : errMsg);
+      await runLatCheckInline(checkResult.timedOut ? `documenter subagent timed out after 120s` : errMsg, existingLogPath);
     }
 
-    async function runLatHookAndShowResult(resolvedErrors = 0, workerSummary = "", reintroducedFixed = 0, hasErrors = false): Promise<void> {
+    async function runLatHookAndShowResult(
+      resolvedErrors = 0,
+      workerSummary = "",
+      reintroducedFixed = 0,
+      hasErrors = false,
+      stats?: { logPath?: string; toolCalls?: number; iterations?: number; durationMs?: number },
+    ): Promise<void> {
       const raw = tryRun(["hook", "cursor", "stop"]).trim();
       const workerPrefix = resolvedErrors > 0
         ? `documenter resolved ${resolvedErrors} error(s) (${reintroducedFixed} reintroduced-link fix(es)). ${workerSummary}`
         : (workerSummary || "lat.md is in sync with the codebase.");
 
+      const statsFooter = stats
+        ? `\n\n---\n📋 ${stats.toolCalls ?? 0} tool calls · ${stats.iterations ?? 0} iterations · ${typeof stats.durationMs === "number" ? (stats.durationMs / 1000).toFixed(1) : "?"}s` +
+          (stats.logPath ? ` · log: ${stats.logPath}` : "")
+        : "";
+
       if (!raw) {
         // No issues - lat.md is in sync
         latCheckCompletedForPrompt = true;
         pi.sendMessage(
-          { customType: "lat-ok", content: workerPrefix, display: true },
+          { customType: "lat-ok", content: workerPrefix + statsFooter, display: true },
           { deliverAs: "followUp", triggerTurn: false }
         );
         return;
@@ -512,7 +624,7 @@ export default async function (pi: ExtensionAPI) {
       if (!reason) {
         latCheckCompletedForPrompt = true;
         pi.sendMessage(
-          { customType: "lat-ok", content: workerPrefix, display: true },
+          { customType: "lat-ok", content: workerPrefix + statsFooter, display: true },
           { deliverAs: "followUp", triggerTurn: false }
         );
         return;
@@ -522,7 +634,7 @@ export default async function (pi: ExtensionAPI) {
         // Documenter reported partial — show check warning
         latCheckCompletedForPrompt = true;
         pi.sendMessage(
-          { customType: "lat-check", content: `${workerPrefix}\n\n${reason}`, display: true },
+          { customType: "lat-check", content: `${workerPrefix}\n\n${reason}${statsFooter}`, display: true },
           { deliverAs: "followUp", triggerTurn: false }
         );
         return;
@@ -531,14 +643,14 @@ export default async function (pi: ExtensionAPI) {
       // Show OK but with a reminder about what needs to be done
       latCheckCompletedForPrompt = true;
       pi.sendMessage(
-        { customType: "lat-ok", content: `${workerPrefix}\n\nlat.md sync reminder: ${reason}`, display: true },
+        { customType: "lat-ok", content: `${workerPrefix}\n\nlat.md sync reminder: ${reason}${statsFooter}`, display: true },
         { deliverAs: "followUp", triggerTurn: false }
       );
     }
   });
 
   // Fallback: run lat check inline if subagent fails
-  async function runLatCheckInline(backgroundFailure?: string): Promise<void> {
+  async function runLatCheckInline(backgroundFailure?: string, logPath?: string): Promise<void> {
     // Delegate stop checks to lat's centralized hook logic.
     // Reuses the same behavior as Cursor/Claude integration, so Pi stays in sync
     // with future stop-check improvements (including nested lat.md repos).
@@ -559,14 +671,16 @@ export default async function (pi: ExtensionAPI) {
 
     latCheckCompletedForPrompt = true;
 
+    const logFooter = logPath ? `\n\n---\n📋 log: ${logPath}` : "";
+
     if (!reason) {
       // Even if the background process failed, provide explicit completion feedback.
       pi.sendMessage(
         {
           customType: "lat-ok",
-          content: backgroundFailure
+          content: (backgroundFailure
             ? `lat check fallback completed. No sync warnings from stop hook.\n\nBackground process error:\n${backgroundFailure}`
-            : "lat.md is in sync with the codebase.",
+            : "lat.md is in sync with the codebase.") + logFooter,
           display: true,
         },
         { deliverAs: "followUp", triggerTurn: false },
@@ -575,7 +689,7 @@ export default async function (pi: ExtensionAPI) {
     }
 
     pi.sendMessage(
-      { customType: "lat-check", content: reason, display: true },
+      { customType: "lat-check", content: reason + logFooter, display: true },
       { deliverAs: "followUp", triggerTurn: true },
     );
   }

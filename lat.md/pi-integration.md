@@ -69,13 +69,16 @@ The extension runs stop checks to ensure lat.md stays synchronized with the code
 
 1. **Spawns documenter subagent** — launches a `pi` subprocess with `--mode json -p --no-session` to run the `documenter` agent (defined at `~/.pi/agent/agents/documenter.md`) in isolation
 2. **Shows minimal status** — displays "🔍 lat check running..." while in progress
-3. **Reports results compactly** — shows "✓ lat OK" on success with collapsed details
+3. **Reports results compactly** — shows "✓ lat OK" on success (collapsed by default). When expanded (Ctrl+O), the message includes a short run footer with:
+   - tool call count
+   - assistant iteration count
+   - duration
+   - documenter log file path (`lat.md/log/YYYYMMDDhhmmss.txt`)
 
 **Documenter subagent workflow:**
-- Registers journal hooks before lat hooks so journal writes happen first in `agent_end`
 - Spawns `pi --mode json -p --no-session --model zai/glm-5-turbo` at `agent_end`
 - In `-p --no-session` mode, `agent_end` hooks don't fire, so there's no recursive subprocess risk
-- Documenter runs `lat check`, applies auto-fix rules for recurring journal link reintroductions, and repeats (max 6 iterations)
+- Documenter runs `lat check` and repeats (max 6 iterations)
 - Auto-fix rules live in `~/.pi/agent/agents/documenter.md` under the "Auto-Fix Rules for Recurring Link Reintroductions" section
 - Main extension waits for subagent completion (120s timeout) and parses the structured JSON status block from the final assistant message
 - Documenter returns `{ status, resolvedErrors, reintroducedFixed, summary }` as its last output
@@ -85,7 +88,7 @@ The extension runs stop checks to ensure lat.md stays synchronized with the code
 
 This behavior is shared across all agents (Cursor, Claude, Pi) via the same `lat hook cursor stop` command. See [[cli#hook]] for complete details on stop hook behavior, including handling of nested lat.md repos.
 
-## `lat init` File Structure
+## lat init File Structure
 
 Directory structure created by `lat init` when setting up lat.md for the pi agent.
 
@@ -180,29 +183,4 @@ Related documentation for deeper technical details and related topics.
 - [[cli#hook]] — Hook event handling and stop-check logic
 - [[markdown]] — lat.md markdown extensions (wiki links, frontmatter)
 
-## Extension Development Research
 
-Research findings on Pi's extension system capabilities for implementing custom features.
-
-### Journal Extension Research
-
-Comprehensive analysis of Pi's extension API for implementing a daily session journal feature that stores entries in `lat.md/journals/YYYY-MM-DD.md`.
-
-Pi's extension system provides excellent support for session journaling through:
-
-**Lifecycle Hooks:** Complete coverage of session events (`session_start`, `session_shutdown`, `agent_start`, `agent_end`) and message events (`message_start`, `message_end`, `tool_execution_*`) for capturing all user interactions and agent responses.
-
-**Session Data Access:** Rich session data via `ctx.sessionManager.getBranch()` providing access to all conversation messages, tool calls, and metadata with proper branching support.
-
-**Message Extraction:** Well-structured message types (`UserMessage`, `AssistantMessage`, `ToolResultMessage`) with typed content blocks enabling extraction of user prompts, assistant responses, and tool usage patterns.
-
-**State Management:** Multiple approaches available - file-based persistence for long-term storage, session-based state for current activity, or hybrid approaches combining both.
-
-The research identified three implementation approaches:
-1. **File-based** (recommended): Direct writing to journal markdown files with immediate persistence  
-2. **Session-based**: Using Pi's `appendEntry()` for state management with export commands
-3. **Hybrid**: Session state for current activity plus file persistence for historical records
-
-Full research details and implementation examples documented in [[journal-research#Pi Extension System Research: Daily Journal Implementation]].
-
-See also: [[journal-research#Pi Extension System Research: Daily Journal Implementation]] — Complete Pi extension API research and implementation approaches for daily session journaling.
