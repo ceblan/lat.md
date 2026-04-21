@@ -13,6 +13,7 @@ Daily journal files indexed by date, each containing session details, prompts, a
 
 - [[2026-04-11]] — Fixed journal.ts extension for directory/file handling
 - [[2026-04-17]] — Pi agent hooks research and lat.md integration analysis
+- [[2026-04-21]] — Research on lat check subagent delegation implementation history
 
 ## Directory Structure
 

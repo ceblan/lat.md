@@ -51,6 +51,58 @@ function tryRun(args: string[]): string {
   }
 }
 
+/**
+ * Parse the documenter subagent's NDJSON stdout to extract the structured
+ * JSON status block from the final assistant message.
+ */
+function parseDocumenterOutput(stdout: string): {
+  status: "ok" | "partial";
+  resolvedErrors: number;
+  reintroducedFixed: number;
+  summary: string;
+} | null {
+  let finalText = "";
+  for (const line of stdout.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const evt = JSON.parse(line);
+      // Look for message_end events with assistant role
+      if (evt.type === "message_end" && evt.message?.role === "assistant") {
+        const textBlocks = (evt.message.content || [])
+          .filter((c: { type: string }) => c.type === "text")
+          .map((c: { text: string }) => c.text);
+        finalText = textBlocks.join("\n");
+      }
+    } catch {
+      // Not JSON, skip
+    }
+  }
+  if (!finalText) return null;
+
+  // Extract the JSON status block from the last fenced code block
+  const jsonMatch = finalText.match(/\{[\s\S]*?"status"[\s\S]*?\}/);
+  if (!jsonMatch) return null;
+  try {
+    const parsed = JSON.parse(jsonMatch[0]);
+    // Normalize status: accept "done", "ok", "success" as "ok"
+    const rawStatus = String(parsed.status || "");
+    const status: "ok" | "partial" = (rawStatus === "ok" || rawStatus === "done" || rawStatus === "success")
+      ? "ok"
+      : rawStatus === "partial"
+        ? "partial"
+        : "ok"; // default to ok if lat check passed
+    return {
+      status,
+      resolvedErrors: typeof parsed.resolvedErrors === "number" ? parsed.resolvedErrors : (typeof parsed.fixes === "number" ? parsed.fixes : 0),
+      reintroducedFixed: typeof parsed.reintroducedFixed === "number" ? parsed.reintroducedFixed : 0,
+      summary: typeof parsed.summary === "string" ? parsed.summary : (status === "ok" ? "lat.md is in sync" : "Some errors remain"),
+    };
+  } catch {
+    // JSON parse failed
+  }
+  return null;
+}
+
 export default async function (pi: ExtensionAPI) {
   // ── Tools ──────────────────────────────────────────────────────────
 
@@ -339,108 +391,26 @@ export default async function (pi: ExtensionAPI) {
     const latDir = join(process.cwd(), "lat.md");
     if (!existsSync(latDir)) return;
 
-    // Launch subagent to run lat check in a separate process
+    // Launch documenter subagent to run lat check in a separate process
     latCheckInProgress = true;
 
     const { spawn } = require("child_process");
 
-    // Worker subprocess: runs `lat check`, applies known auto-fixes for recurring
-    // journal refs, and repeats until check passes or no progress is possible.
-    const workerScript = [
-      "const { execSync } = require('child_process');",
-      "const fs = require('fs');",
-      "const path = require('path');",
-      "const LAT = process.env.LAT_CMD || 'lat';",
-      "const CWD = process.env.LAT_CWD || process.cwd();",
-      "const MAX_RUNS = 6;",
-      "const fixes = new Map([",
-      "  ['pi-integration#Pi Integration#Runtime Workflow#Before each task (`before_agent_start`)', 'pi-integration#Pi Integration#Runtime Workflow'],",
-      "  ['pi-integration#Pi Integration#Runtime Workflow#After task completion (`agent_end`)', 'pi-integration#Pi Integration#Runtime Workflow'],",
-      "  ['pi-integration#Pi Integration#Runtime Workflow#Before each task ()', 'pi-integration#Pi Integration#Runtime Workflow'],",
-      "  ['pi-integration#Pi Integration#Runtime Workflow#After task completion ()', 'pi-integration#Pi Integration#Runtime Workflow'],",
-      "  ['pi-integration#Pi Integration#File Structure After `lat init`', 'pi-integration'],",
-      "  ['pi-integration#Pi Integration#File Structure After', 'pi-integration'],",
-      "]);",
-      "function runCheck(){",
-      "  try {",
-      "    const out = execSync(`${LAT} check`, { cwd: CWD, encoding: 'utf-8' });",
-      "    return { ok: true, output: out || 'All checks passed' };",
-      "  } catch (err) {",
-      "    const out = String((err && err.stdout) || '') + String((err && err.stderr) || '');",
-      "    return { ok: false, output: out };",
-      "  }",
-      "}",
-      "function parseBroken(output){",
-      "  const rows = [];",
-      "  const re = /-\\s+([^:\\n]+\\.md):(\\d+): broken link \\[[\\[]([^\\]]+)\\]\\]\\s+—/g;",
-      "  let m;",
-      "  while ((m = re.exec(output)) !== null) {",
-      "    rows.push({ file: m[1], target: m[3] });",
-      "  }",
-      "  return rows;",
-      "}",
-      "function applyFixes(rows){",
-      "  let replaced = 0;",
-      "  let reintroduced = 0;",
-      "  const byFile = new Map();",
-      "  for (const row of rows) {",
-      "    if (!fixes.has(row.target)) continue;",
-      "    if (!byFile.has(row.file)) byFile.set(row.file, new Set());",
-      "    byFile.get(row.file).add(row.target);",
-      "  }",
-      "  for (const [file, targets] of byFile.entries()) {",
-      "    const abs = path.join(CWD, file);",
-      "    if (!fs.existsSync(abs)) continue;",
-      "    let text = fs.readFileSync(abs, 'utf-8');",
-      "    let changed = false;",
-      "    for (const target of targets) {",
-      "      const replacement = fixes.get(target);",
-      "      if (!replacement) continue;",
-      "      const from = `[[${target}]]`;",
-      "      const to = `[[${replacement}]]`;",
-      "      const count = text.split(from).length - 1;",
-      "      if (count > 0) {",
-      "        text = text.split(from).join(to);",
-      "        replaced += count;",
-      "        if (target.includes('File Structure After')) reintroduced += count;",
-      "        changed = true;",
-      "      }",
-      "    }",
-      "    if (changed) fs.writeFileSync(abs, text, 'utf-8');",
-      "  }",
-      "  return { replaced, reintroduced };",
-      "}",
-      "let totalFixed = 0;",
-      "let totalReintroduced = 0;",
-      "let runs = 0;",
-      "let last = '';",
-      "for (let i = 0; i < MAX_RUNS; i++) {",
-      "  runs = i + 1;",
-      "  const res = runCheck();",
-      "  last = res.output || '';",
-      "  if (res.ok) {",
-      "    console.log(JSON.stringify({ ok: true, resolvedErrors: totalFixed, reintroducedFixed: totalReintroduced, runs, summary: 'All checks passed', lastOutput: last }));",
-      "    process.exit(0);",
-      "  }",
-      "  const broken = parseBroken(last);",
-      "  if (broken.length === 0) break;",
-      "  const fixedNow = applyFixes(broken);",
-      "  totalFixed += fixedNow.replaced;",
-      "  totalReintroduced += fixedNow.reintroduced;",
-      "  if (fixedNow.replaced === 0) break;",
-      "}",
-      "console.log(JSON.stringify({ ok: false, resolvedErrors: totalFixed, reintroducedFixed: totalReintroduced, runs, summary: 'Worker could not auto-fix all errors', lastOutput: last }));",
-      "process.exit(1);",
-    ].join("\n");
+    // Spawn the `documenter` agent as an isolated pi subprocess.
+    // --no-session for ephemeral execution (agent_end hooks don't fire in -p --no-session mode),
+    // --mode json for parseable NDJSON output.
+    // No -ne flag needed: agent_end hooks don't fire in -p --no-session mode,
+    // and the lat tools (lat_check) are available for the documenter to use.
+    const piBin = process.env.PI_BIN || "pi";
+    const documenterTask = "Run post-task lat.md sync check ONLY. Skip Steps 1-2 (commits, @lat tags). Execute Step 3 (link integrity with auto-fix loop). Then end your response with the required JSON status block.";
 
-    const subagentProcess = spawn(process.execPath, ["-e", workerScript], {
+    const subagentProcess = spawn(piBin, [
+      "--mode", "json", "-p", "--no-session",
+      "--model", "zai/glm-5-turbo",
+      documenterTask,
+    ], {
       cwd: process.cwd(),
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        LAT_CMD: LAT,
-        LAT_CWD: process.cwd(),
-      },
     });
 
     // Show minimal status indicator while running
@@ -477,8 +447,8 @@ export default async function (pi: ExtensionAPI) {
         } catch {
           // ignore kill errors
         }
-        finish({ ok: false, stdout, stderr: `${stderr}\nlat worker timed out after 90s`, timedOut: true });
-      }, 90_000);
+        finish({ ok: false, stdout, stderr: `${stderr}\ndocumenter subagent timed out after 120s`, timedOut: true });
+      }, 120_000);
 
       subagentProcess.stdout.on("data", (data: Buffer) => {
         stdout += data.toString();
@@ -497,41 +467,26 @@ export default async function (pi: ExtensionAPI) {
       });
     });
 
-    const payload = (() => {
-      const lines = (checkResult.stdout || "").trim().split("\n").filter(Boolean);
-      const lastLine = lines[lines.length - 1];
-      if (!lastLine) return null;
-      try {
-        return JSON.parse(lastLine) as {
-          ok: boolean;
-          resolvedErrors: number;
-          reintroducedFixed?: number;
-          runs: number;
-          summary: string;
-          lastOutput?: string;
-        };
-      } catch {
-        return null;
-      }
-    })();
+    // Parse the final assistant message from the NDJSON event stream.
+    // The documenter agent emits a JSON status block as its last output.
+    const payload = parseDocumenterOutput(checkResult.stdout);
 
     latCheckInProgress = false;
 
-    if (checkResult.ok && payload?.ok) {
+    if (payload && (payload.status === "ok" || payload.status === "partial")) {
       // Run lat hook cursor stop to verify sync status
-      await runLatHookAndShowResult(payload.resolvedErrors, payload.summary, payload.reintroducedFixed || 0);
+      const hasErrors = payload.status === "partial";
+      await runLatHookAndShowResult(payload.resolvedErrors, payload.summary, payload.reintroducedFixed, hasErrors);
     } else {
-      // Fallback to inline execution if worker failed
-      const workerMsg = payload
-        ? `${payload.summary} (resolved ${payload.resolvedErrors} error(s), reintroduced-fixed ${payload.reintroducedFixed || 0}, runs ${payload.runs}).\n\n${payload.lastOutput || ""}`
-        : (checkResult.stderr || checkResult.stdout || "lat worker failed");
-      await runLatCheckInline(workerMsg);
+      // Fallback to inline execution if subagent failed
+      const errMsg = checkResult.stderr || checkResult.stdout || "documenter subagent failed";
+      await runLatCheckInline(checkResult.timedOut ? `documenter subagent timed out after 120s` : errMsg);
     }
 
-    async function runLatHookAndShowResult(resolvedErrors = 0, workerSummary = "", reintroducedFixed = 0): Promise<void> {
+    async function runLatHookAndShowResult(resolvedErrors = 0, workerSummary = "", reintroducedFixed = 0, hasErrors = false): Promise<void> {
       const raw = tryRun(["hook", "cursor", "stop"]).trim();
       const workerPrefix = resolvedErrors > 0
-        ? `worker resolved ${resolvedErrors} error(s) (${reintroducedFixed} reintroduced-link fix(es)). ${workerSummary}`
+        ? `documenter resolved ${resolvedErrors} error(s) (${reintroducedFixed} reintroduced-link fix(es)). ${workerSummary}`
         : (workerSummary || "lat.md is in sync with the codebase.");
 
       if (!raw) {
@@ -558,6 +513,16 @@ export default async function (pi: ExtensionAPI) {
         latCheckCompletedForPrompt = true;
         pi.sendMessage(
           { customType: "lat-ok", content: workerPrefix, display: true },
+          { deliverAs: "followUp", triggerTurn: false }
+        );
+        return;
+      }
+
+      if (hasErrors) {
+        // Documenter reported partial — show check warning
+        latCheckCompletedForPrompt = true;
+        pi.sendMessage(
+          { customType: "lat-check", content: `${workerPrefix}\n\n${reason}`, display: true },
           { deliverAs: "followUp", triggerTurn: false }
         );
         return;

@@ -67,22 +67,25 @@ Each tool shells out to the `lat` CLI and provides custom rendering:
 
 The extension runs stop checks to ensure lat.md stays synchronized with the codebase:
 
-1. **Launches subagent process** — spawns a separate `lat check` process to run validation
+1. **Spawns documenter subagent** — launches a `pi` subprocess with `--mode json -p --no-session` to run the `documenter` agent (defined at `~/.pi/agent/agents/documenter.md`) in isolation
 2. **Shows minimal status** — displays "🔍 lat check running..." while in progress
 3. **Reports results compactly** — shows "✓ lat OK" on success with collapsed details
 
-**Subagent workflow:**
+**Documenter subagent workflow:**
 - Registers journal hooks before lat hooks so journal writes happen first in `agent_end`
-- Spawns a worker subprocess at `agent_end`
-- Worker runs `lat check`, auto-fixes known recurring journal link patterns, and repeats (max 6 runs)
-- Main extension waits for worker completion (90s timeout) and parses worker JSON summary
-- Worker reports resolved error count plus how many were reintroduced-link fixes in that cycle
-- If successful, extension runs `lat hook cursor stop` to verify sync and emits compact "lat OK" output
-- Falls back to inline stop-check flow if the worker cannot fully resolve errors
+- Spawns `pi --mode json -p --no-session --model zai/glm-5-turbo` at `agent_end`
+- In `-p --no-session` mode, `agent_end` hooks don't fire, so there's no recursive subprocess risk
+- Documenter runs `lat check`, applies auto-fix rules for recurring journal link reintroductions, and repeats (max 6 iterations)
+- Auto-fix rules live in `~/.pi/agent/agents/documenter.md` under the "Auto-Fix Rules for Recurring Link Reintroductions" section
+- Main extension waits for subagent completion (120s timeout) and parses the structured JSON status block from the final assistant message
+- Documenter returns `{ status, resolvedErrors, reintroducedFixed, summary }` as its last output
+- If `status: "ok"`, extension runs `lat hook cursor stop` to verify sync and emits compact "lat OK" output
+- If `status: "partial"`, shows check warnings with the documenter's summary
+- Falls back to inline stop-check flow if the subagent process fails (crash, timeout, parse error)
 
 This behavior is shared across all agents (Cursor, Claude, Pi) via the same `lat hook cursor stop` command. See [[cli#hook]] for complete details on stop hook behavior, including handling of nested lat.md repos.
 
-## File Structure After `lat init`
+## `lat init` File Structure
 
 Directory structure created by `lat init` when setting up lat.md for the pi agent.
 
