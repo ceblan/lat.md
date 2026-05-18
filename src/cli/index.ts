@@ -215,10 +215,28 @@ program
   .command('init')
   .description('Initialize a lat.md directory')
   .argument('[dir]', 'target directory (default: cwd)')
-  .action(async (dir?: string) => {
-    const { initCmd } = await import('./init.js');
-    await initCmd(dir);
-  });
+  .option(
+    '--agent <name>',
+    'pre-select agent (repeatable: --agent pi --agent cursor)',
+    (v: string, acc: string[]) => [...acc, v],
+    [] as string[],
+  )
+  .option(
+    '--no-project-files',
+    'skip per-project extension and skill files (use when lat is globally installed)',
+  )
+  .action(
+    async (
+      dir: string | undefined,
+      opts: { agent: string[]; projectFiles?: boolean },
+    ) => {
+      const { initCmd } = await import('./init.js');
+      await initCmd(dir, {
+        agents: opts.agent?.length ? opts.agent : undefined,
+        skipProjectFiles: opts.projectFiles === false,
+      });
+    },
+  );
 
 program
   .command('hook')

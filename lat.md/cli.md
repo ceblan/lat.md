@@ -143,12 +143,16 @@ Implementation: [[src/cli/gen.ts]]
 
 Interactive setup wizard. Walks the user through initializing lat.md in a project, with per-agent configuration for multiple coding tools.
 
-Usage: `lat init [dir]`
+Usage: `lat init [dir] [--agent <name>]... [--no-project-files]`
+
+Options:
+- `--agent <name>` — pre-select one or more agents (repeatable, e.g. `--agent pi --agent cursor`). Overrides `default_agents` from config.
+- `--no-project-files` — skip per-project `.pi/extensions/lat.ts` and `.pi/skills/lat-md/SKILL.md` when lat is globally installed. Overrides `pi_project_files: false` from config.
 
 Steps:
 
 1. **lat.md/ directory** — if not present, asks whether to create it (via a one-off readline interface that is closed before step 2). Scaffolds from `templates/init/` (`.gitignore` and `README.md`). If it already exists, skips ahead.
-2. **Agent selection** — interactive checklist menu ([[src/cli/checklist-menu.ts#checklistMenu]]). All agents are shown at once with `[x]`/`[ ]` checkboxes; the cursor row is highlighted with `chalk.bgCyan`. Keys: up/down (j/k) to move, Space to toggle, Enter to confirm, Ctrl+C to abort. Returns an array of selected agent values. Non-TTY fallback returns `[]`. After confirmation, prints a summary line (e.g. "Selected: Claude Code, Cursor" or dim "None"). **Important:** the persistent readline interface is created _after_ this step — `checklistMenu` puts stdin into raw mode with its own `data` listener, which corrupts any co-existing readline interface.
+2. **Agent selection** — interactive checklist menu ([[src/cli/checklist-menu.ts#checklistMenu]]). All agents are shown at once with `[x]`/`[ ]` checkboxes; the cursor row is highlighted with `chalk.bgCyan`. Keys: up/down (j/k) to move, Space to toggle, Enter to confirm, Ctrl+C to abort. Pre-checks agents from `--agent` flag or `default_agents` config field. Returns an array of selected agent values. Non-TTY fallback returns pre-selected agents (or `[]`). After confirmation, prints a summary line (e.g. "Selected: Claude Code, Cursor" or dim "None"). **Important:** the persistent readline interface is created _after_ this step — `checklistMenu` puts stdin into raw mode with its own `data` listener, which corrupts any co-existing readline interface.
 3. **Command style** — if any selected agent needs a lat command reference (all except Codex), a `selectMenu` asks "How should agents run lat?" with three options: `lat` (global install, portable), the resolved local binary path, or `npx lat.md@latest` (slow but zero-install). The choice determines what command string is written into hooks, MCP configs, and Pi extensions. Non-interactive mode defaults to `local`. Choosing `global` or `npx` makes generated config files portable and safe to commit.
 4. **AGENTS.md** — created if a non-Claude agent is selected (Cursor, Copilot, Codex). Shared instruction file. Uses marker-based append mode (see below).
 5. **Per-agent setup** — configures each selected agent (see subsections below). Each step prints a brief explanation of _why_ it's needed (e.g. why a hook is used instead of CLAUDE.md, why MCP is registered alongside CLI access).
@@ -245,6 +249,8 @@ Currently supports these fields:
 - `reranker_model` — optional reranker model name (enables reranking when set)
 - `reranker_api_base` — optional reranker API base URL (default `http://localhost:8082`)
 - `reranker_top_k` — optional candidate count to rerank (default `20`)
+- `default_agents` — array of agent values to pre-select in `lat init` checklist (e.g. `["pi", "cursor"]`)
+- `pi_project_files` — set to `false` to skip per-project `.pi/extensions/lat.ts` and `.pi/skills/lat-md/SKILL.md` in `lat init` (for global Pi installs)
 
 Key resolution order for embeddings: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`.
 

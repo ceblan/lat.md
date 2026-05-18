@@ -10,18 +10,23 @@ export interface ChecklistOption {
  * Returns an array of checked values.
  *
  * Keys: Up/Down (j/k) to move, Space to toggle, Enter to confirm, Ctrl+C to exit.
- * Non-TTY fallback: returns [].
+ * Non-TTY fallback: returns defaultChecked (or []).
  */
 export async function checklistMenu(
   options: ChecklistOption[],
   prompt?: string,
+  defaultChecked?: string[],
 ): Promise<string[]> {
   if (options.length === 0) return [];
-  if (!process.stdin.isTTY) return [];
+  if (!process.stdin.isTTY) return defaultChecked ?? [];
 
   return new Promise((resolve) => {
     let cursor = 0;
-    const checked = new Set<number>();
+    const checked = new Set<number>(
+      (defaultChecked ?? [])
+        .map((v) => options.findIndex((o) => o.value === v))
+        .filter((i) => i >= 0),
+    );
     const stdin = process.stdin;
 
     const wasRaw = stdin.isRaw;

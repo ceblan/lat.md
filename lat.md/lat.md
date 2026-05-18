@@ -9,6 +9,5 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[tests]] — High-level test specifications mapped to code via require-code-mention
 - [[website]] — Standalone Next.js marketing site deployed to Vercel
 - [[pi-integration]] — How lat.md integrates with the pi coding agent
-- [[journals]] — Daily session journals capturing prompts, tool usage, and summaries
 - [[journals]] — Daily development journals from pi coding sessions
 - [[log]] — Investigation logs and session artifacts

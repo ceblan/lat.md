@@ -6,6 +6,7 @@ import {
   readFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { styleText } from 'node:util';
@@ -896,9 +897,54 @@ async function setupPi(
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
   style: LatCommandStyle,
+  skipProjectFiles: boolean,
 ): Promise<void> {
   // AGENTS.md — Pi reads this natively
   // (already created in the shared step if any non-Claude agent is selected)
+
+  // Auto-detect global Pi install and suggest skipping project files
+  let skip = skipProjectFiles;
+  if (!skip) {
+    const globalExtPath = join(
+      homedir(),
+      '.pi',
+      'agent',
+      'extensions',
+      'lat.ts',
+    );
+    const globalSkillPath = join(
+      homedir(),
+      '.pi',
+      'agent',
+      'skills',
+      'lat-md',
+      'SKILL.md',
+    );
+    if (existsSync(globalExtPath) || existsSync(globalSkillPath)) {
+      console.log('');
+      console.log(
+        styleText('yellow', '  Global Pi lat install detected.') +
+          ' Creating per-project files could cause tool name conflicts.',
+      );
+      skip = await ask(
+        '  Skip per-project extension and skill? (recommended)',
+      );
+    }
+  }
+
+  if (skip) {
+    console.log('');
+    console.log(
+      styleText('dim', '  Skipping per-project Pi files (using global install).'),
+    );
+    console.log(
+      styleText(
+        'dim',
+        '  AGENTS.md will still be created for team members and other agents.',
+      ),
+    );
+    return;
+  }
 
   // .pi/extensions/lat.ts — extension that registers tools + lifecycle hooks
   console.log('');
@@ -1228,7 +1274,17 @@ export function readLogo(): string {
   return readFileSync(join(findTemplatesDir(), 'logo.txt'), 'utf-8');
 }
 
-export async function initCmd(targetDir?: string): Promise<void> {
+interface InitOptions {
+  /** Pre-select agents in the checklist (overrides config.default_agents). */
+  agents?: string[];
+  /** Skip per-project extension and skill files (for global Pi installs). */
+  skipProjectFiles?: boolean;
+}
+
+export async function initCmd(
+  targetDir?: string,
+  opts: InitOptions = {},
+): Promise<void> {
   console.log(styleText('cyan', readLogo()));
 
   // Upfront version check — let the user upgrade before proceeding
@@ -1297,6 +1353,12 @@ export async function initCmd(targetDir?: string): Promise<void> {
     // Step 2: Which coding agents do you use? (interactive select menu)
     console.log('');
 
+    // Read global config for defaults
+    const cfg = readConfig();
+    const defaultAgents = opts.agents ?? cfg.default_agents ?? [];
+    const skipProjectFiles =
+      opts.skipProjectFiles ?? cfg.pi_project_files === false;
+
     const allAgents = [
       { label: 'Claude Code', value: 'claude' },
       { label: 'Pi', value: 'pi' },
@@ -1309,6 +1371,7 @@ export async function initCmd(targetDir?: string): Promise<void> {
     const selectedAgents = await checklistMenu(
       allAgents,
       'Which coding agents do you use?',
+      defaultAgents,
     );
 
     const useClaudeCode = selectedAgents.includes('claude');
@@ -1396,7 +1459,7 @@ export async function initCmd(targetDir?: string): Promise<void> {
     if (usePi) {
       console.log('');
       console.log(styleText('bold', 'Setting up Pi...'));
-      await setupPi(root, latDir, fileHashes, ask, commandStyle);
+      await setupPi(root, latDir, fileHashes, ask, commandStyle, skipProjectFiles);
     }
 
     if (useCursor) {
@@ -1425,6 +1488,27 @@ export async function initCmd(targetDir?: string): Promise<void> {
 
     // Step 5: LLM key setup
     await setupLlmKey(rl);
+
+    // Offer to save agent/project-files preferences if not already configured
+    if (rl && interactive && !cfg.default_agents) {
+      const save = await ask(
+        `Save current agent selection (${selectedAgents.join(', ')}) as default for future lat init runs?`,
+      );
+      if (save) {
+        const updates: Partial<ReturnType<typeof readConfig>> = {
+          default_agents: selectedAgents,
+        };
+        if (usePi && skipProjectFiles && cfg.pi_project_files !== false) {
+          updates.pi_project_files = false;
+        }
+        writeConfig({ ...cfg, ...updates });
+        console.log(
+          styleText('green', '  Preferences saved') +
+            ' to ' +
+            styleText('dim', getConfigPath()),
+        );
+      }
+    }
 
     // Record init version and file hashes so `lat check` can detect stale setups
     writeInitMeta(latDir, fileHashes);

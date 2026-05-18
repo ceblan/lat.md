@@ -21,6 +21,10 @@ export type LatConfig = {
   reranker_model?: string;
   reranker_api_base?: string;
   reranker_top_k?: number;
+  /** Pre-select agents in `lat init` checklist (e.g. ["pi"]). */
+  default_agents?: string[];
+  /** false = skip per-project .pi/extensions and .pi/skills in lat init. */
+  pi_project_files?: boolean;
 };
 
 export function readConfig(): LatConfig {

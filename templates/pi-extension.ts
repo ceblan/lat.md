@@ -1,8 +1,8 @@
 import { Type } from "@sinclair/typebox";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getMarkdownTheme, keyHint } from "@mariozechner/pi-coding-agent";
-import type { Theme } from "@mariozechner/pi-tui";
-import { Box, Markdown, Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { getMarkdownTheme, keyHint } from "@earendil-works/pi-coding-agent";
+import type { Theme } from "@earendil-works/pi-tui";
+import { Box, Markdown, Text } from "@earendil-works/pi-tui";
 // import journalExtension from "./journal.js";
 
 const PREVIEW_LINES = 4;
@@ -32,7 +32,7 @@ function collapsibleResult(
 }
 
 /** Absolute path to the lat binary, injected by `lat init`. */
-const LAT = "__LAT_BIN__";
+const LAT = "lat";
 
 function run(args: string[], cwd?: string): string {
   const { execSync } = require("child_process") as typeof import("child_process");
@@ -103,6 +103,7 @@ function parseDocumenterOutput(stdout: string): {
   return null;
 }
 
+// @lat: [[extensions/lat-extension#Lat Extension]]
 export default async function (pi: ExtensionAPI) {
   // ── Tools ──────────────────────────────────────────────────────────
 
@@ -333,7 +334,16 @@ export default async function (pi: ExtensionAPI) {
 
   // ── Lifecycle hooks ────────────────────────────────────────────────
 
-  // Guards to prevent infinite loops:
+  // Flag CLI: --lat-sync habilita el sync post-task (omitido por defecto)
+  pi.registerFlag("lat-sync", {
+    description: "Run post-task lat.md sync check after each agent response",
+    type: "boolean",
+  });
+  // Raw check: pi.getFlag no funciona durante la factory porque runtime.flagValues
+  // se popule después. Usar process.argv para el check temprano.
+  const latSyncEnabled = process.argv.includes("--lat-sync");
+
+  // Guards para prevenir infinite loops:
   // - agentEndFired: prevents agent_end from firing twice per prompt
   // - latCheckInProgress: prevents starting multiple lat checks
   // - latCheckCompletedForPrompt: prevents re-running after completion
@@ -365,10 +375,15 @@ export default async function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async (_event, ctx) => {
+    // @lat: [[extensions/lat-extension#Lat Extension#Background Validation]]
     // Guard: don't spawn a documentator if we ARE the documentator subprocess.
     // agent_end DOES fire in -p --no-session mode, so without this guard
     // every documentator would spawn another documentator → infinite loop.
     if (process.env.LAT_DOCUMENTER === "1") return;
+
+    // Skip unless --lat-sync flag is set or we're in aacci subprocess context
+    if (!latSyncEnabled) return;
+
     // Prevent loops and duplicates
     if (agentEndFired || latCheckInProgress || latCheckCompletedForPrompt) return;
     agentEndFired = true;
@@ -391,12 +406,14 @@ export default async function (pi: ExtensionAPI) {
     const piBin = process.env.PI_BIN || "pi";
     const documentatorTask = "Run post-task lat.md sync check ONLY. Skip Steps 1-2 (commits, @lat tags). Execute Step 3 (link integrity with auto-fix loop). Then end your response with the required JSON status block.";
 
-    // ── Documenter subprocess logging ────────────────────────────────
-    // Use /tmp/lat.log/ for logs, NOT lat.md/log/ — the documentator treats
-    // any .txt file inside lat.md/ as a stray file and tries to move/delete it.
+    // ── Documenter subprocess logging (Phase 1) ─────────────────────
+    // Create lat.md/log/ if needed and tee stdout/stderr into a timestamped .txt file.
     const startTime = new Date();
     const pad2 = (n: number) => String(n).padStart(2, "0");
     const timestamp = `${startTime.getFullYear()}${pad2(startTime.getMonth() + 1)}${pad2(startTime.getDate())}${pad2(startTime.getHours())}${pad2(startTime.getMinutes())}${pad2(startTime.getSeconds())}`;
+    // Use /tmp/lat.log/ for logs, NOT lat.md/log/ — the documentator treats
+    // any .txt file inside lat.md/ as a stray file and tries to move/delete it,
+    // which would corrupt its own log mid-run and confuse subsequent checks.
     const os = require("os") as typeof import("node:os");
     const logDir = path.join(os.tmpdir(), "lat.log");
     const logPath = path.join(logDir, `${timestamp}.txt`);
@@ -676,7 +693,114 @@ export default async function (pi: ExtensionAPI) {
 
     pi.sendMessage(
       { customType: "lat-check", content: reason + logFooter, display: true },
+      // triggerTurn: false — don't start a new agent turn, which would reset
+      // guard flags and trigger agent_end again → potential loop.
       { deliverAs: "followUp", triggerTurn: false },
     );
   }
+
+  // ── Slash command: /lat-sync ──────────────────────────────────────
+
+  pi.registerCommand("lat-sync", {
+    description: "Spawn documentator in a separate tmux pane to sync lat.md. Usage: /lat-sync",
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      // Reuse split-fork's functions directly
+      const { existsSync, promises: fs } = require("node:fs") as typeof import("node:fs");
+      const path = require("node:path") as typeof import("node:path");
+      const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
+
+      // ── isTmuxRunning ──
+      let tmuxRunning = false;
+      try {
+        const result = await new Promise<{ code: number; stdout: string }>((resolve) => {
+          require("child_process").exec("tmux list-sessions 2>/dev/null", (err: Error | null, stdout: string) => {
+            resolve({ code: err ? 1 : 0, stdout });
+          });
+        });
+        tmuxRunning = result.code === 0 && result.stdout.length > 0;
+      } catch { /* no tmux */ }
+
+      if (!tmuxRunning) {
+        ctx.ui.notify("/lat-sync requires an active tmux session. Start tmux first.", "warning");
+        return;
+      }
+
+      // ── createForkedSession (identical to split-fork) ──
+      const sessionFile = ctx.sessionManager.getSessionFile();
+      if (!sessionFile) {
+        ctx.ui.notify("No session file available to fork.", "error");
+        return;
+      }
+
+      const sessionDir = path.dirname(sessionFile);
+      const branchEntries = ctx.sessionManager.getBranch();
+      const currentHeader = ctx.sessionManager.getHeader();
+
+      const timestamp = new Date().toISOString();
+      const fileTimestamp = timestamp.replace(/[:.]/g, "-");
+      const newSessionId = randomUUID();
+      const newSessionFile = path.join(sessionDir, `${fileTimestamp}_${newSessionId}.jsonl`);
+
+      const newHeader = {
+        type: "session",
+        version: currentHeader?.version ?? 3,
+        id: newSessionId,
+        timestamp,
+        cwd: currentHeader?.cwd ?? ctx.cwd,
+        parentSession: sessionFile,
+      };
+
+      const lines = [JSON.stringify(newHeader), ...branchEntries.map((e: unknown) => JSON.stringify(e))].join("\n") + "\n";
+      await fs.mkdir(sessionDir, { recursive: true });
+      await fs.writeFile(newSessionFile, lines, "utf8");
+
+      // ── buildPiStartupInput (identical to split-fork) ──
+      function shellQuote(value: string): string {
+        if (value.length === 0) return "''";
+        return `'${value.replace(/'/g, `'"'"'`)}'`;
+      }
+
+      function getPiInvocationParts(): string[] {
+        const currentScript = process.argv[1];
+        if (currentScript && existsSync(currentScript)) {
+          return [process.execPath, currentScript];
+        }
+        const execName = path.basename(process.execPath).toLowerCase();
+        const isGenericRuntime = /^(node|bun)(\.exe)?$/.test(execName);
+        if (!isGenericRuntime) return [process.execPath];
+        return ["pi"];
+      }
+
+      const commandParts = [...getPiInvocationParts()];
+      commandParts.push("--session", newSessionFile);
+      commandParts.push("--model", "opencode-go/minimax-m2.7");
+      commandParts.push("--tools", "read,grep,find,ls,bash,edit,write");
+      commandParts.push("--skill", shellQuote(path.join(require("os").homedir(), ".pi/agent/skills/lat-md")));
+
+      const documentatorPrompt = [
+        "Read ~/.pi/agent/agents/documentator.md and execute ALL its instructions directly.",
+        "Do NOT use any subagent or delegation tool. Execute the 4 steps yourself.",
+        "",
+        "End with the JSON status block as specified in documentator.md.",
+      ].join("\n");
+
+      commandParts.push(documentatorPrompt);
+      const startupInput = "LAT_DOCUMENTER=1 " + commandParts.map(shellQuote).join(" ");
+
+      const cwd = ctx.cwd || process.env.HOME || "~";
+
+      // ── Spawn tmux pane (identical to split-fork's tmuxFork with direction="vertical") ──
+      const result = await pi.exec("tmux", ["split-window", "-h", "-c", cwd, startupInput]);
+
+      if (result.code !== 0) {
+        const reason = result.stderr?.trim() || result.stdout?.trim() || "unknown tmux error";
+        ctx.ui.notify(`Failed to spawn lat-sync: ${reason}`, "error");
+        ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
+        return;
+      }
+
+      const fileName = path.basename(newSessionFile);
+      ctx.ui.notify(`lat-sync spawned in tmux pane (session: ${fileName}). Main session remains active.`, "info");
+    },
+  });
 }
