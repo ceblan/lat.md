@@ -34,6 +34,14 @@ Env values take precedence over config-file values, and top_k is normalized to a
 
 Without a model, reranker config resolves to undefined so search runs embeddings-only mode.
 
+### Includes reranker API key when configured
+
+When `reranker_api_key` is set in the config file, it is included in the resolved `RerankerConfig` as `apiKey`.
+
+### Env LAT_RERANKER_API_KEY overrides config file
+
+The `LAT_RERANKER_API_KEY` environment variable takes precedence over the `reranker_api_key` config file value.
+
 ## RAG Replay Tests
 
 Functional tests that exercise the full RAG pipeline using a replay server instead of a real embedding API.

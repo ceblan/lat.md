@@ -1,33 +1,36 @@
 # Documentation Sync Report
 
-**Tracked range**: `01567575dd61ba... ..HEAD` (last tracked: `01567575dd61ba0364ec78c12696db86a5a2f773`). Last tracked commit now: `add2b5b33e42192ee03037c9f339c18be24476c7`.
+**Tracked range**: `01567575dd61.....348d6533ae...` (last tracked → HEAD). Last tracked commit now: `348d6533ae4fbed8c8fc224d360eeca308654e56`.
 
 ## Commits Reviewed
 | Commit | Message | Documented | Action |
 |--------|---------|-----------|--------|
-| ca31f381bb | documentator++ | Yes (existing) | No change needed |
-| 01567575dd | default checklist and optional project .pi dirs | Yes (existing) | No change needed |
-| add2b5b33e | añadimos soporte para jina embeddings y rerank. Ademas lat cod ++ | Yes (new) | lat.md already updated in commit: Provider Detection + Configuration File + tests/search.md all updated |
+| add2b5b33e4 | añadimos soporte para jina embeddings y rerank. Ademas lat cod ++ | Partially | Added 2 missing @lat tags in tests; created 2 missing lat.md test specs |
+| 348d6533ae | incremento numero de version a 0.11.4 | No | Skip — version bump, no code/docs change |
 
 ## @lat Tags Added
-No new @lat tags needed. All new test cases (`detects Jina key`, `includes reranker api key when configured`, `env LAT_RERANKER_API_KEY overrides config file`) fall within existing describe blocks that already carry @lat tags (`[[search#Provider Detection]]` and `[[search#Reranker Config]]`).
+| File | Line | Tag |
+|------|------|-----|
+| tests/search.test.ts | 55 | `// @lat: [[search#Provider Detection]]` |
+| tests/search.test.ts | 177 | `// @lat: [[search#Reranker Config#Includes reranker API key when configured]]` |
+| tests/search.test.ts | 188 | `// @lat: [[search#Reranker Config#Env LAT_RERANKER_API_KEY overrides config file]]` |
 
 ## Link Integrity
 - lat check: **PASSED** (0 errors)
 - Errors fixed: none
 
 ## Additional Actions
-- Step 2 skipped for unchanged code. New tests are within existing @lat-tagged describe blocks — no orphan test cases.
-- Post-task checklist satisfied: lat.md updated ✅, @lat tags verified ✅, lat check passes ✅.
+- Created 2 missing test spec leaf sections in `lat.md/tests/search.md`:
+  - `Reranker Config#Includes reranker API key when configured`
+  - `Reranker Config#Env LAT_RERANKER_API_KEY overrides config file`
+- Updated `lat.md/last-commit.md` tracker to HEAD (0.11.4)
 
 ## Graph & Bridge Refresh
 
 | Action | Status | Details |
 |--------|--------|---------|
-| graphify update | ✅ ran | 192 files, 1120 nodes, 1638 edges, 141 communities |
-| bridge-build | ✅ ran | 528 sections, 125 @lat refs resolved, 12/141 communities mapped |
-
-8 pre-existing warnings from intentional test fixture @lat errors (`error-ambiguous-short-ref`, `error-bare-heading-ref`, `error-dangling-code-ref`, etc.) — these are deliberate test cases for error detection, not real issues.
+| graphify update | ✅ ran | 192/192 files, 1123 nodes, 1641 edges, 142 communities |
+| bridge-build | ✅ ran | 532 sections, 128/120 @lat resolved, 11/142 communities mapped; 8 pre-existing fixture errors (unrelated) |
 
 ## Summary
-lat.md is fully in sync with the Jina AI provider implementation; all checks pass.
+lat.md is fully in sync — all @lat tags present, link integrity clean, tracker updated to HEAD.

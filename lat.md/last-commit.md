@@ -7,9 +7,9 @@ Managed by the documentator subagent. Stores the last git commit reviewed for do
 Current HEAD commit at the time of the last documentator run.
 
  - Branch: add-php
- - CommitHash: 01567575dd61ba0364ec78c12696db86a5a2f773
+ - CommitHash: 348d6533ae4fbed8c8fc224d360eeca308654e56
  - Author: Carlos Estrada <carlos@iterando.net>
- - AuthorDate: Mon May 18 10:06:09 2026 +0200
+ - AuthorDate: Thu Jun 25 21:11:23 2026 +0200
  - Commit: Carlos Estrada <carlos@iterando.net>
- - CommitDate: Mon May 18 10:06:09 2026 +0200
- - CommitMessage: default checklist and optional project .pi dirs
+ - CommitDate: Thu Jun 25 21:11:23 2026 +0200
+ - CommitMessage: incremento numero de version a 0.11.4
