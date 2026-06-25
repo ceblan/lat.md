@@ -103,7 +103,7 @@ function parseDocumenterOutput(stdout: string): {
   return null;
 }
 
-// @lat: [[extensions/lat-extension#Lat Extension]]
+// @lat: [[pi-integration#Pi Integration]]
 export default async function (pi: ExtensionAPI) {
   // ── Tools ──────────────────────────────────────────────────────────
 
@@ -343,6 +343,90 @@ export default async function (pi: ExtensionAPI) {
   // se popule después. Usar process.argv para el check temprano.
   const latSyncEnabled = process.argv.includes("--lat-sync");
 
+  // ── Project-level config: pi/config/lat.json ───────────────────
+  // Read label_code setting from project config. When false, @lat tags
+  // should NOT be added to source code. Propagated to documentator via
+  // LAT_LABEL_CODE env var.
+  function readLatConfig(): { labelCode: boolean } {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("path") as typeof import("node:path");
+    const configPath = path.join(process.cwd(), "pi", "config", "lat.json");
+    try {
+      if (fs.existsSync(configPath)) {
+        const content = fs.readFileSync(configPath, "utf-8");
+        const parsed = JSON.parse(content) as { label_code?: boolean | string };
+        // Accept both boolean false and string "false"
+        const val = parsed.label_code;
+        return { labelCode: val !== false && val !== "false" };
+      }
+    } catch { /* ignore missing or malformed config */ }
+    return { labelCode: true }; // default: create @lat tags
+  }
+  const latConfig = readLatConfig();
+
+  // ── Documentator model resolution ──────────────────────────────
+  // The documentator is spawned as a bare `pi` subprocess (NOT via the
+  // formal `subagent` tool), so pi core never parses the agent frontmatter.
+  // Read the `model:` field from ~/.pi/agent/agents/documentator.md at
+  // runtime and pass it via --model so the subprocess honors the agent
+  // definition. If a list is given, the FIRST entry is used. Returns null
+  // when the field is absent/unparseable, in which case --model is omitted
+  // and pi falls back to its default model resolution.
+  // @lat: [[pi-integration#Pi Integration#Runtime Workflow#After task completion ()]]
+  function readDocumentatorModel(): string | null {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("path") as typeof import("node:path");
+    const os = require("os") as typeof import("os");
+    const agentPath = path.join(os.homedir(), ".pi", "agent", "agents", "documentator.md");
+    try {
+      if (!fs.existsSync(agentPath)) return null;
+      const content = fs.readFileSync(agentPath, "utf-8");
+      // Extract YAML frontmatter between leading --- fences.
+      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fmMatch) return null;
+      const fm = fmMatch[1];
+      // Match a top-level `model:` key. Value may be:
+      //   - scalar:  model: zai/glm-4.7
+      //   - list:    model:\n  - zai/glm-4.7\n  - other/model
+      // `[ \t]*` (not `\s*`) so the capture does NOT cross a newline and
+      // swallow the first list item. Stop at the next top-level key (a line
+      // starting with a word char at column 0).
+      const keyMatch = fm.match(/^model:[ \t]*(.*)$/m);
+      if (!keyMatch) return null;
+      const inline = keyMatch[1].trim();
+      if (inline) {
+        // scalar form — could be a JSON array or a bare string
+        if (inline.startsWith("[")) {
+          try {
+            const arr = JSON.parse(inline) as unknown;
+            if (Array.isArray(arr) && arr.length > 0 && typeof arr[0] === "string") {
+              return arr[0].trim();
+            }
+          } catch { /* malformed inline array */ }
+          return null;
+        }
+        return inline.replace(/^["']|["']$/g, "").trim() || null;
+      }
+      // list form — collect subsequent `  - <value>` lines
+      const listLines: string[] = [];
+      const lines = fm.split(/\r?\n/);
+      const startIdx = lines.findIndex((l) => /^model:\s*$/.test(l));
+      if (startIdx === -1) return null;
+      for (let i = startIdx + 1; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^\s*[-*]\s+\S/.test(l)) {
+          listLines.push(l.replace(/^\s*[-*]\s+/, "").replace(/[#].*$/, "").replace(/^["']|["']$/g, "").trim());
+        } else if (/^\S/.test(l)) {
+          break; // next top-level key reached
+        }
+      }
+      return listLines.find((m) => m.length > 0) ?? null;
+    } catch {
+      return null;
+    }
+  }
+  const documentatorModel = readDocumentatorModel();
+
   // Guards para prevenir infinite loops:
   // - agentEndFired: prevents agent_end from firing twice per prompt
   // - latCheckInProgress: prevents starting multiple lat checks
@@ -375,7 +459,7 @@ export default async function (pi: ExtensionAPI) {
   });
 
   pi.on("agent_end", async (_event, ctx) => {
-    // @lat: [[extensions/lat-extension#Lat Extension#Background Validation]]
+    // @lat: [[pi-integration#Runtime Workflow]]
     // Guard: don't spawn a documentator if we ARE the documentator subprocess.
     // agent_end DOES fire in -p --no-session mode, so without this guard
     // every documentator would spawn another documentator → infinite loop.
@@ -430,15 +514,19 @@ export default async function (pi: ExtensionAPI) {
       logStream = null;
     }
 
-    const subagentProcess = spawn(piBin, [
-      "--mode", "json", "-p", "--no-session",
-      "--model", "zai/glm-5-turbo",
-      documentatorTask,
-    ], {
+    // The subprocess is a bare `pi` invocation, so pi core never parses the
+    // documentator agent frontmatter. readDocumentatorModel() extracts the
+    // `model:` field from ~/.pi/agent/agents/documentator.md so the subprocess
+    // honors the agent definition instead of falling back to pi's default.
+    const docArgs = ["--mode", "json", "-p", "--no-session"];
+    if (documentatorModel) docArgs.push("--model", documentatorModel);
+    docArgs.push(documentatorTask);
+    const subagentProcess = spawn(piBin, docArgs, {
       cwd: process.cwd(),
       // LAT_DOCUMENTER=1 tells the lat.ts extension loaded inside the subprocess
       // not to spawn another documentator when agent_end fires there.
-      env: { ...process.env, LAT_DOCUMENTER: "1" },
+      // LAT_LABEL_CODE propagates the project's label_code config to the documentator.
+      env: { ...process.env, LAT_DOCUMENTER: "1", LAT_LABEL_CODE: String(latConfig.labelCode) },
       stdio: ["ignore", "pipe", "pipe"],
     });
 
@@ -773,9 +861,15 @@ export default async function (pi: ExtensionAPI) {
 
       const commandParts = [...getPiInvocationParts()];
       commandParts.push("--session", newSessionFile);
-      commandParts.push("--model", "opencode-go/minimax-m2.7");
-      commandParts.push("--tools", "read,grep,find,ls,bash,edit,write");
+      // Honor the model declared in the documentator agent frontmatter
+      // (first entry if a list). readDocumentatorModel() returns null when
+      // the field is absent, in which case pi uses its default model.
+      if (documentatorModel) commandParts.push("--model", documentatorModel);
+      // Do NOT pass --tools — let the documentator use all extension tools
+      // (lat_search, lat_check, hindsight_recall, etc.) by default.
+      commandParts.push("--no-skills");
       commandParts.push("--skill", shellQuote(path.join(require("os").homedir(), ".pi/agent/skills/lat-md")));
+      commandParts.push("--skill", shellQuote(path.join(require("os").homedir(), ".pi/agent/skills/hindsight-memory")));
 
       const documentatorPrompt = [
         "Read ~/.pi/agent/agents/documentator.md and execute ALL its instructions directly.",
@@ -785,7 +879,7 @@ export default async function (pi: ExtensionAPI) {
       ].join("\n");
 
       commandParts.push(documentatorPrompt);
-      const startupInput = "LAT_DOCUMENTER=1 " + commandParts.map(shellQuote).join(" ");
+      const startupInput = `LAT_DOCUMENTER=1 LAT_LABEL_CODE=${latConfig.labelCode} ` + commandParts.map(shellQuote).join(" ");
 
       const cwd = ctx.cwd || process.env.HOME || "~";
 

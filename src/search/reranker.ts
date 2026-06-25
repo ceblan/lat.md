@@ -39,7 +39,10 @@ export async function rerankSections(
   const startedAt = Date.now();
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(reranker.apiKey && { Authorization: `Bearer ${reranker.apiKey}` }),
+    },
     body: JSON.stringify({
       model: reranker.model,
       query,

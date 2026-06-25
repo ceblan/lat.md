@@ -902,7 +902,42 @@ async function setupPi(
   // AGENTS.md — Pi reads this natively
   // (already created in the shared step if any non-Claude agent is selected)
 
-  // Auto-detect global Pi install and suggest skipping project files
+  // @lat: [[pi-integration#Pi Integration#Project-level Configuration#label_code]]
+  // Ask about label_code preference BEFORE deciding on per-project files.
+  // If the user doesn't want a local config, there's no point asking about
+  // per-project extension/skill — that only makes sense when .pi/ will exist.
+  const configDir = join(root, '.pi', 'config');
+  const configPath = join(configDir, 'lat.json');
+  let createLabelCodeConfig = false;
+
+  if (existsSync(configPath)) {
+    console.log(
+      styleText('dim', '  .pi/config/lat.json already exists — keeping it.'),
+    );
+    createLabelCodeConfig = false;
+  } else {
+    createLabelCodeConfig = await ask(
+      '  Create local label_code config (disables // @lat tags in code)?',
+    );
+    if (createLabelCodeConfig) {
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(
+        configPath,
+        JSON.stringify({ label_code: false }, null, 2) + '\n',
+      );
+      console.log(
+        styleText('green', '  label_code: false') +
+          ' saved to .pi/config/lat.json',
+      );
+    } else {
+      console.log(
+        styleText('dim', '  Skipped — // @lat tags will be added by default.'),
+      );
+    }
+  }
+
+  // Auto-detect global Pi install and suggest skipping project files.
+  // This is independent of the label_code config above.
   let skip = skipProjectFiles;
   if (!skip) {
     const globalExtPath = join(
@@ -926,16 +961,17 @@ async function setupPi(
         styleText('yellow', '  Global Pi lat install detected.') +
           ' Creating per-project files could cause tool name conflicts.',
       );
-      skip = await ask(
-        '  Skip per-project extension and skill? (recommended)',
-      );
+      skip = await ask('  Skip per-project extension and skill? (recommended)');
     }
   }
 
   if (skip) {
     console.log('');
     console.log(
-      styleText('dim', '  Skipping per-project Pi files (using global install).'),
+      styleText(
+        'dim',
+        '  Skipping per-project Pi files (using global install).',
+      ),
     );
     console.log(
       styleText(
@@ -1459,7 +1495,14 @@ export async function initCmd(
     if (usePi) {
       console.log('');
       console.log(styleText('bold', 'Setting up Pi...'));
-      await setupPi(root, latDir, fileHashes, ask, commandStyle, skipProjectFiles);
+      await setupPi(
+        root,
+        latDir,
+        fileHashes,
+        ask,
+        commandStyle,
+        skipProjectFiles,
+      );
     }
 
     if (useCursor) {

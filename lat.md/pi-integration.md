@@ -76,7 +76,7 @@ The extension runs stop checks to ensure lat.md stays synchronized with the code
    - documentator log file path (`/tmp/lat.log/YYYYMMDDhhmmss.txt`)
 
 **Documenter subagent workflow:**
-- Spawns `pi --mode json -p --no-session --model zai/glm-5-turbo` at `agent_end`, passing `LAT_DOCUMENTER=1` as an environment variable
+- Spawns `pi --mode json -p --no-session` at `agent_end`, passing `LAT_DOCUMENTER=1` and `LAT_LABEL_CODE` as environment variables. Because the subprocess is a bare `pi` invocation (not the formal `subagent` tool), pi core never parses the agent frontmatter itself — the extension calls `readDocumentatorModel()` to read the `model:` field from `~/.pi/agent/agents/documentator.md` at runtime and passes it via `--model`. A list yields its FIRST entry; a missing/unparseable field omits `--model` so pi falls back to its default. The `/lat-sync` slash command resolves the model the same way.
 - **`agent_end` hooks DO fire in `-p --no-session` mode** — the `LAT_DOCUMENTER=1` env var is the actual re-entrancy guard: it is checked at the very start of the `agent_end` handler in the subprocess and causes an immediate return, preventing infinite subprocess chains
 - Documenter runs `lat check` and repeats (max 6 iterations)
 - Auto-fix rules live in `~/.pi/agent/agents/documentator.md` under the "Auto-Fix Rules for Recurring Link Reintroductions" section
@@ -90,6 +90,24 @@ The extension runs stop checks to ensure lat.md stays synchronized with the code
 > **Note on `sendMessage` in `agent_end`:** injecting a custom message with `deliverAs: "followUp"` during `agent_end` is unsafe — if `isStreaming` is still `true` at that moment, the `triggerTurn` option is bypassed and the message is delivered via `agent.followUp()`, which can trigger an API call with a conversation ending in `assistant`. Models that don't support assistant-message prefill (e.g. GLM) return a 400 error. Progress feedback during documentator execution therefore uses `ctx.ui.setStatus()` exclusively.
 
 This behavior is shared across all agents (Cursor, Claude, Pi) via the same `lat hook cursor stop` command. See [[cli#hook]] for complete details on stop hook behavior, including handling of nested lat.md repos.
+
+## Project-level Configuration
+
+Projects can override lat.md behavior via `pi/config/lat.json` at the project root. The extension reads this file on startup.
+
+### label_code
+
+Controls whether `@lat` code tags are added to source files. When `false`, the AGENTS.md post-task checklist skips the `// @lat` tag step and the documentator subagent skips Step 2.
+
+`lat init` asks this question during Pi setup: "Create local label_code config (disables // @lat tags in code)?" — answering yes creates `pi/config/lat.json` with `label_code: false`. If the file already exists, the prompt is skipped (idempotent). The question is only asked when per-project Pi files are being created (not when using a global install).
+
+```json
+{
+  "label_code": false
+}
+```
+
+The setting is propagated to subprocesses via the `LAT_LABEL_CODE` environment variable. Default is `true` (tags are added). `lat check` still runs normally regardless of this setting.
 
 ## lat init File Structure
 

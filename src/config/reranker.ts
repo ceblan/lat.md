@@ -27,5 +27,7 @@ export function resolveRerankerConfig(
   const rawTopK = env.LAT_RERANKER_TOP_K ?? config.reranker_top_k;
   const topK = rawTopK === undefined ? 20 : parsePositiveInt('top_k', rawTopK);
 
-  return { model, apiBase, topK };
+  const apiKey = env.LAT_RERANKER_API_KEY || config.reranker_api_key;
+
+  return { model, apiBase, topK, ...(apiKey && { apiKey }) };
 }

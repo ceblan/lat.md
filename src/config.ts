@@ -21,6 +21,7 @@ export type LatConfig = {
   reranker_model?: string;
   reranker_api_base?: string;
   reranker_top_k?: number;
+  reranker_api_key?: string;
   /** Pre-select agents in `lat init` checklist (e.g. ["pi"]). */
   default_agents?: string[];
   /** false = skip per-project .pi/extensions and .pi/skills in lat init. */
@@ -92,6 +93,7 @@ export type RerankerConfig = {
   model: string;
   apiBase: string;
   topK: number;
+  apiKey?: string;
 };
 
 /**
@@ -104,6 +106,7 @@ export type RerankerConfig = {
  * Optional overrides:
  * - LAT_RERANKER_API_BASE / reranker_api_base (default: http://localhost:8082)
  * - LAT_RERANKER_TOP_K / reranker_top_k (default: 20)
+ * - LAT_RERANKER_API_KEY / reranker_api_key — sent as Bearer token (e.g. for Jina Rerank)
  */
 export function getRerankerConfig(): RerankerConfig | undefined {
   const config = readConfig();

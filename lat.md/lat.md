@@ -11,3 +11,4 @@ This directory defines the high-level concepts, business logic, and architecture
 - [[pi-integration]] — How lat.md integrates with the pi coding agent
 - [[journals]] — Daily development journals from pi coding sessions
 - [[log]] — Investigation logs and session artifacts
+- [[last-commit]] — Git commit tracker for documentator coverage runs

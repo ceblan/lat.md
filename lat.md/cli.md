@@ -183,6 +183,7 @@ Sets up a Pi extension that registers lat tools as native Pi tools and hooks int
 - `AGENTS.md` — shared instruction file (created in the shared step)
 - `.pi/extensions/lat.ts` — TypeScript extension generated from `templates/pi-extension.ts` with the full invocation command injected. `resolveLatBin()` in `init.ts` reconstructs exactly how the process was started: for compiled binaries it's just the binary path; for `.ts` source files run via tsx it captures `node <execArgv> <script>` so the same loader flags are replayed. Registers six tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) that shell out to the `lat` CLI. Each tool provides a `renderCall` method so the Pi TUI displays the query/parameters inline in the tool call header (e.g. `lat search "query text"`). The `lat_search` and `lat_section` tools also provide a `renderResult` method that shows a collapsed preview (first 4 lines) by default and renders the full output as styled markdown (via pi's `Markdown` component and `getMarkdownTheme()`) when expanded via Ctrl+O (`expandTools` keybinding). Registers custom message renderers for `lat-reminder`, `lat-check`, `lat-check-status`, and `lat-ok` with collapsed-by-default previews. Hooks into `before_agent_start` (injects a visible search reminder via `customType` message with `display: true`) and `agent_end` (spawns a `documentator` subagent process, parses its NDJSON output, updates the footer status bar in real time via `ctx.ui.setStatus("lat-doc", ...)` on `tool_execution_start` events (guarded by `ctx.hasUI`), clears that status on completion/timeout/error, then runs `lat hook cursor stop` for final sync validation/fallback messaging; final `lat-ok`/`lat-check` messages include a footer with tool calls/iterations/duration and the log file path).
 - `.pi/skills/lat-md/SKILL.md` — skill spec generated from `templates/skill/SKILL.md`. Teaches the agent how to author and maintain `lat.md/` files (section structure, wiki links, code refs, test specs). Pi discovers it automatically from the `.pi/skills/` directory.
+- `pi/config/lat.json` — created only if the user answers "n" to the `label_code` prompt ("Add // @lat code reference tags to source files? [Y/n]"). Contains `{ "label_code": false }`. If the file already exists, the prompt is skipped. See [[pi-integration#Project-level Configuration#label_code]].
 - `.pi` directory added to `.gitignore` (extension and skills contain local paths)
 
 The `agent_end` hook keeps behavior consistent with Cursor/Claude by still using `lat hook cursor stop` for final validation and fallback, while delegating auto-fix execution to the isolated `documentator` subagent (including nested `lat.md/` git repos; see [[cli#hook#Excluding lat.md/ from version control]]).
@@ -249,12 +250,13 @@ Currently supports these fields:
 - `reranker_model` — optional reranker model name (enables reranking when set)
 - `reranker_api_base` — optional reranker API base URL (default `http://localhost:8082`)
 - `reranker_top_k` — optional candidate count to rerank (default `20`)
+- `reranker_api_key` — optional API key sent as `Authorization: Bearer` header to authenticated reranker endpoints (e.g. Jina Rerank)
 - `default_agents` — array of agent values to pre-select in `lat init` checklist (e.g. `["pi", "cursor"]`)
 - `pi_project_files` — set to `false` to skip per-project `.pi/extensions/lat.ts` and `.pi/skills/lat-md/SKILL.md` in `lat init` (for global Pi installs)
 
 Key resolution order for embeddings: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`.
 
-Reranker resolution order: `LAT_RERANKER_MODEL`/`LAT_RERANKER_API_BASE`/`LAT_RERANKER_TOP_K` env vars override config file values. Reranking is disabled unless a reranker model is configured.
+Reranker resolution order: `LAT_RERANKER_MODEL`/`LAT_RERANKER_API_BASE`/`LAT_RERANKER_TOP_K`/`LAT_RERANKER_API_KEY` env vars override config file values. Reranking is disabled unless a reranker model is configured.
 
 Optional debugging: set `LAT_RERANKER_DEBUG=1` to print reranking pipeline/request traces to stderr.
 
@@ -358,6 +360,7 @@ Provider is auto-detected from the resolved key prefix:
 
 - `sk-...` — OpenAI (uses `text-embedding-3-small`, 1536 dims)
 - `vck_...` — Vercel AI Gateway (uses `openai/text-embedding-3-small`, 1536 dims)
+- `jina_...` — Jina AI (uses `jina-embeddings-v3`, 1024 dims)
 - `ollama:model` — Ollama local inference (default model `qwen3-embedding:8b`, 4096 dims). Supports custom base URL via `ollama:model@http://host:port` (defaults to `http://192.168.100.1:11434`). Uses the OpenAI-compatible `/v1/embeddings` endpoint exposed by Ollama.
 - `sk-ant-...` — Anthropic (not supported, errors with guidance)
 - `REPLAY_LAT_LLM_KEY::<url>` — test-only replay server for offline testing

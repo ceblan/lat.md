@@ -13,3 +13,5 @@ dist
 .cursor
 /package-lock.json
 /.vera/
+/.cache/
+/graphify-out/

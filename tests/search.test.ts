@@ -50,6 +50,14 @@ describe('detectProvider', () => {
   it('rejects unknown key', () => {
     expect(() => detectProvider('xyz_abc123')).toThrow(/Unrecognized/);
   });
+
+  it('detects Jina key', () => {
+    const p = detectProvider('jina_abc123');
+    expect(p.name).toBe('jina');
+    expect(p.apiBase).toBe('https://api.jina.ai/v1');
+    expect(p.model).toBe('jina-embeddings-v3');
+    expect(p.dimensions).toBe(1024);
+  });
 });
 
 // @lat: [[search#Reranker Fallback#Uses vector ranking when reranker is not configured]]
@@ -164,6 +172,22 @@ describe('resolveRerankerConfig', () => {
   // @lat: [[search#Reranker Config#Treats missing model as disabled reranker]]
   it('treats missing model as disabled reranker', () => {
     expect(resolveRerankerConfig({}, {})).toBeUndefined();
+  });
+
+  it('includes reranker api key when configured', () => {
+    const config = resolveRerankerConfig(
+      { reranker_model: 'jina-reranker-v2-base-multilingual', reranker_api_key: 'jina_key123' },
+      {},
+    );
+    expect(config?.apiKey).toBe('jina_key123');
+  });
+
+  it('env LAT_RERANKER_API_KEY overrides config file', () => {
+    const config = resolveRerankerConfig(
+      { reranker_model: 'model', reranker_api_key: 'file-key' },
+      { LAT_RERANKER_MODEL: 'model', LAT_RERANKER_API_KEY: 'env-key' },
+    );
+    expect(config?.apiKey).toBe('env-key');
   });
 });
 
