@@ -868,8 +868,8 @@ export default async function (pi: ExtensionAPI) {
       // Do NOT pass --tools — let the documentator use all extension tools
       // (lat_search, lat_check, hindsight_recall, etc.) by default.
       commandParts.push("--no-skills");
-      commandParts.push("--skill", shellQuote(path.join(require("os").homedir(), ".pi/agent/skills/lat-md")));
-      commandParts.push("--skill", shellQuote(path.join(require("os").homedir(), ".pi/agent/skills/hindsight-memory")));
+      commandParts.push("--skill", path.join(require("os").homedir(), ".pi/agent/skills/lat-md"));
+      commandParts.push("--skill", path.join(require("os").homedir(), ".pi/agent/skills/hindsight-memory"));
 
       const documentatorPrompt = [
         "Read ~/.pi/agent/agents/documentator.md and execute ALL its instructions directly.",
