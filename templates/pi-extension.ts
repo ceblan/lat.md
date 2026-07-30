@@ -435,10 +435,31 @@ export default async function (pi: ExtensionAPI) {
   let latCheckInProgress = false;
   let latCheckCompletedForPrompt = false;
 
+  // /nal bypass: per-turn flag to skip the lat-reminder for this prompt.
+  // Two-phase: pending (set by the nal:bypass event listener) → active
+  // (consumed here at before_agent_start). See [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]].
+  let nalBypassPending = false;
+  let nalBypassActive = false;
+
+  // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]]
+  // /nal: receive the bypass signal from the nal extension (shared event bus).
+  // Inert when no nal extension is installed: the event never fires, the flags
+  // stay false, and the reminder behaves as before.
+  pi.events.on("nal:bypass", () => {
+    nalBypassPending = true;
+  });
+
   pi.on("before_agent_start", async () => {
     agentEndFired = false;
     latCheckInProgress = false;
     latCheckCompletedForPrompt = false; // Reset for new prompt
+
+    // /nal bypass: consume pending → active for THIS turn only. If no new
+    // pending was set (normal prompt), clear any stale active so a previous
+    // /nal turn can't leak into this one.
+    nalBypassActive = nalBypassPending;
+    nalBypassPending = false;
+    if (nalBypassActive) return; // Skip the lat-reminder for this /nal turn
 
     const reminder = [
       "Before starting work, run `lat_search` with one or more queries describing the user's intent.",

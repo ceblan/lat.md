@@ -46,6 +46,8 @@ The extension injects a visible message that reminds the agent:
 
 The message is displayed with a collapsed preview by default, and expands to full markdown when the user presses Ctrl+O (via pi's `expandTools` keybinding).
 
+The reminder can be bypassed per-turn by an optional `/nal <prompt>` command (provided by a separate nal extension, not installed by `lat init`): when a `nal:bypass` event fires on pi's shared `pi.events` bus, a two-phase pending→active flag consumed at `before_agent_start` skips the reminder for that turn only. The listener is inert when no nal extension is installed — the event never fires and the reminder behaves as described above.
+
 ### During task execution
 
 The agent has six lat tools available as native pi tools:
