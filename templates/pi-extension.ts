@@ -105,6 +105,25 @@ function parseDocumenterOutput(stdout: string): {
 
 // @lat: [[pi-integration#Pi Integration]]
 export default async function (pi: ExtensionAPI) {
+  // Skip registration in projects without lat.md/: the lat_* tools, the /lat
+  // command and the per-request reminder are dead weight anywhere else.
+  // The nearest-ancestor walk matches pi's context-file discovery, so the
+  // tools stay available when pi starts in a project subdirectory (the lat
+  // CLI itself resolves the project root upward too). /reload re-runs this.
+  {
+    const { existsSync } = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    let dir = process.cwd();
+    let found = false;
+    while (true) {
+      if (existsSync(path.join(dir, "lat.md"))) { found = true; break; }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!found) return;
+  }
+
   // ── Tools ──────────────────────────────────────────────────────────
 
   pi.registerTool({
@@ -435,18 +454,23 @@ export default async function (pi: ExtensionAPI) {
   let latCheckInProgress = false;
   let latCheckCompletedForPrompt = false;
 
-  // /nal bypass: per-turn flag to skip the lat-reminder for this prompt.
-  // Two-phase: pending (set by the nal:bypass event listener) → active
+  // /lat activation: per-turn flag to INJECT the lat-reminder for this prompt.
+  // Default is OFF — the reminder only fires on /lat or /full turns.
+  // Two-phase: pending (set by the activate:* event listeners) → active
   // (consumed here at before_agent_start). See [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]].
-  let nalBypassPending = false;
-  let nalBypassActive = false;
+  let latActivatePending = false;
+  let latActivateActive = false;
 
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]]
-  // /nal: receive the bypass signal from the nal extension (shared event bus).
-  // Inert when no nal extension is installed: the event never fires, the flags
-  // stay false, and the reminder behaves as before.
-  pi.events.on("nal:bypass", () => {
-    nalBypassPending = true;
+  // /lat|/full: receive the activation signal from the activator extension
+  // (shared event bus). Payload-free channels: only set the pending flag.
+  // Inert when no activator extension is installed: the events never fire, the
+  // flags stay false, and the reminder stays off.
+  pi.events.on("activate:lat", () => {
+    latActivatePending = true;
+  });
+  pi.events.on("activate:full", () => {
+    latActivatePending = true;
   });
 
   pi.on("before_agent_start", async () => {
@@ -454,12 +478,12 @@ export default async function (pi: ExtensionAPI) {
     latCheckInProgress = false;
     latCheckCompletedForPrompt = false; // Reset for new prompt
 
-    // /nal bypass: consume pending → active for THIS turn only. If no new
+    // /lat activation: consume pending → active for THIS turn only. If no new
     // pending was set (normal prompt), clear any stale active so a previous
-    // /nal turn can't leak into this one.
-    nalBypassActive = nalBypassPending;
-    nalBypassPending = false;
-    if (nalBypassActive) return; // Skip the lat-reminder for this /nal turn
+    // /lat turn can't leak into this one. Reminder is off by default.
+    latActivateActive = latActivatePending;
+    latActivatePending = false;
+    if (!latActivateActive) return; // Reminder only on /lat|/full turns (default OFF)
 
     const reminder = [
       "Before starting work, run `lat_search` with one or more queries describing the user's intent.",
@@ -811,26 +835,24 @@ export default async function (pi: ExtensionAPI) {
   // ── Slash command: /lat-sync ──────────────────────────────────────
 
   pi.registerCommand("lat-sync", {
-    description: "Spawn documentator in a separate tmux pane to sync lat.md. Usage: /lat-sync",
+    description: "Spawn documentator in a separate tmux or herdr pane to sync lat.md. Usage: /lat-sync",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       // Reuse split-fork's functions directly
       const { existsSync, promises: fs } = require("node:fs") as typeof import("node:fs");
       const path = require("node:path") as typeof import("node:path");
       const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
 
-      // ── isTmuxRunning ──
-      let tmuxRunning = false;
-      try {
-        const result = await new Promise<{ code: number; stdout: string }>((resolve) => {
-          require("child_process").exec("tmux list-sessions 2>/dev/null", (err: Error | null, stdout: string) => {
-            resolve({ code: err ? 1 : 0, stdout });
-          });
-        });
-        tmuxRunning = result.code === 0 && result.stdout.length > 0;
-      } catch { /* no tmux */ }
+      // ── Multiplexer detection (mirrors split-fork: tmux first — it is the ──
+      // ── innermost multiplexer when tmux runs inside a herdr pane) ──
+      type LatSyncMux = "tmux" | "herdr" | "none";
+      const mux: LatSyncMux = process.env.TMUX
+        ? "tmux"
+        : process.env.HERDR_ENV === "1" || process.env.HERDR_PANE_ID
+          ? "herdr"
+          : "none";
 
-      if (!tmuxRunning) {
-        ctx.ui.notify("/lat-sync requires an active tmux session. Start tmux first.", "warning");
+      if (mux === "none") {
+        ctx.ui.notify("/lat-sync requires tmux or herdr. Start one first.", "warning");
         return;
       }
 
@@ -904,18 +926,47 @@ export default async function (pi: ExtensionAPI) {
 
       const cwd = ctx.cwd || process.env.HOME || "~";
 
-      // ── Spawn tmux pane (identical to split-fork's tmuxFork with direction="vertical") ──
-      const result = await pi.exec("tmux", ["split-window", "-h", "-c", cwd, startupInput]);
-
-      if (result.code !== 0) {
-        const reason = result.stderr?.trim() || result.stdout?.trim() || "unknown tmux error";
-        ctx.ui.notify(`Failed to spawn lat-sync: ${reason}`, "error");
-        ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
-        return;
+      // ── Spawn pane (mirrors split-fork's tmuxFork / herdrFork, direction="vertical") ──
+      if (mux === "tmux") {
+        const result = await pi.exec("tmux", ["split-window", "-h", "-c", cwd, startupInput]);
+        if (result.code !== 0) {
+          const reason = result.stderr?.trim() || result.stdout?.trim() || "unknown tmux error";
+          ctx.ui.notify(`Failed to spawn lat-sync: ${reason}`, "error");
+          ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
+          return;
+        }
+      } else {
+        const createResult = await pi.exec("herdr", [
+          "pane", "split", "--current", "--direction", "right", "--cwd", cwd, "--focus",
+        ]);
+        if (createResult.code !== 0) {
+          const reason = createResult.stderr?.trim() || createResult.stdout?.trim() || "unknown herdr error";
+          ctx.ui.notify(`Failed to create herdr pane: ${reason}`, "error");
+          ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
+          return;
+        }
+        let paneId: string | undefined;
+        try {
+          paneId = JSON.parse(createResult.stdout ?? "")?.result?.pane?.pane_id;
+        } catch { /* malformed JSON */ }
+        if (!paneId) {
+          ctx.ui.notify(`herdr pane created but could not parse pane id from: ${createResult.stdout?.trim()}`, "error");
+          ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
+          return;
+        }
+        // `herdr pane run` types into the pane's shell (verified: shell expansion applies),
+        // so pass the shell-quoted startup line as a single argument.
+        const runResult = await pi.exec("herdr", ["pane", "run", paneId, startupInput]);
+        if (runResult.code !== 0) {
+          const reason = runResult.stderr?.trim() || runResult.stdout?.trim() || "unknown herdr error";
+          ctx.ui.notify(`Failed to launch documentator in herdr pane ${paneId}: ${reason}`, "error");
+          ctx.ui.notify(`Session file created: ${newSessionFile}`, "info");
+          return;
+        }
       }
 
       const fileName = path.basename(newSessionFile);
-      ctx.ui.notify(`lat-sync spawned in tmux pane (session: ${fileName}). Main session remains active.`, "info");
+      ctx.ui.notify(`lat-sync spawned in ${mux} pane (session: ${fileName}). Main session remains active.`, "info");
     },
   });
 }

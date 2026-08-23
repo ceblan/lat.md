@@ -37,7 +37,7 @@ Once initialized, the `.pi/extensions/lat.ts` extension is automatically loaded 
 
 ### Before each task (`before_agent_start`)
 
-The extension injects a visible message that reminds the agent:
+On activated turns (`/lat` or `/full` — off by default, see below), the extension injects a visible message that reminds the agent:
 
 1. **Run `lat_search`** with one or more queries describing the user's intent — even for seemingly straightforward tasks
 2. **Use `lat_section`** to read the full content of relevant matches
@@ -46,7 +46,7 @@ The extension injects a visible message that reminds the agent:
 
 The message is displayed with a collapsed preview by default, and expands to full markdown when the user presses Ctrl+O (via pi's `expandTools` keybinding).
 
-The reminder can be bypassed per-turn by an optional `/nal <prompt>` command (provided by a separate nal extension, not installed by `lat init`): when a `nal:bypass` event fires on pi's shared `pi.events` bus, a two-phase pending→active flag consumed at `before_agent_start` skips the reminder for that turn only. The listener is inert when no nal extension is installed — the event never fires and the reminder behaves as described above.
+The reminder is **off by default** (since 2026-08-23). It is injected only on turns activated by an optional activator extension (not installed by `lat init`): `/lat <prompt>` emits `activate:lat`, `/full <prompt>` emits `activate:full` on pi's shared `pi.events` bus, and a two-phase pending→active flag consumed at `before_agent_start` injects the reminder for that turn only. The listener is inert when no activator extension is installed — the events never fire and the reminder stays off.
 
 ### During task execution
 
