@@ -46,7 +46,13 @@ On activated turns (`/lat` or `/full` — off by default, see below), the extens
 
 The message is displayed with a collapsed preview by default, and expands to full markdown when the user presses Ctrl+O (via pi's `expandTools` keybinding).
 
-The reminder is **off by default** (since 2026-08-23). It is injected only on turns activated by an optional activator extension (not installed by `lat init`): `/lat <prompt>` emits `activate:lat`, `/full <prompt>` emits `activate:full` on pi's shared `pi.events` bus, and a two-phase pending→active flag consumed at `before_agent_start` injects the reminder for that turn only. The listener is inert when no activator extension is installed — the events never fire and the reminder stays off.
+The reminder is **off by default** (since 2026-08-23). It has two activation sources. One is an optional activator extension (not installed by `lat init`): `/lat <prompt>` emits `activate:lat`, `/full <prompt>` emits `activate:full` on pi's shared `pi.events` bus, and a two-phase pending→active flag consumed at `before_agent_start` injects the reminder for that turn only. The other is env-based child activation (below) for subagent processes. With neither source present, the reminder stays off.
+
+### Env-based child activation
+
+A parent session can activate the reminder in a child subagent process through the environment: the child starts with `PI_ACTIVATE_LAT=1` in its env.
+
+A subagent launcher maps an `activate: "lat"` param to that env var. The top of the child's first `before_agent_start` sets the same pending flag `/lat` would and injects the reminder on that first turn. The var is deleted on read (one-shot), so it cannot leak into later turns; launchers are expected to strip inherited `PI_ACTIVATE_*` at spawn so activation never propagates to grandchildren. The hook runs before any other `before_agent_start` logic so the read lands after per-session state resets.
 
 ### During task execution
 
