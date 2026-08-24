@@ -474,6 +474,15 @@ export default async function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", async () => {
+    // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
+    // Env-based activation (child subagent): PI_ACTIVATE_LAT from the parent's
+    // `activate` param. One-shot: delete immediately so it can't leak into a
+    // later turn or a grandchild spawn. Read here (not session_start) so it
+    // lands after any per-session state reset.
+    if (process.env.PI_ACTIVATE_LAT === "1") {
+      latActivatePending = true;
+      delete process.env.PI_ACTIVATE_LAT;
+    }
     agentEndFired = false;
     latCheckInProgress = false;
     latCheckCompletedForPrompt = false; // Reset for new prompt
