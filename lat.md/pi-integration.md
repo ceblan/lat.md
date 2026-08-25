@@ -52,7 +52,7 @@ The reminder is **off by default** (since 2026-08-23). It has two activation sou
 
 A parent session can activate the reminder in a child subagent process through the environment: the child starts with `PI_ACTIVATE_LAT=1` in its env.
 
-A subagent launcher maps an `activate: "lat"` param to that env var. The top of the child's first `before_agent_start` sets the same pending flag `/lat` would and injects the reminder on that first turn. The var is deleted on read (one-shot), so it cannot leak into later turns; launchers are expected to strip inherited `PI_ACTIVATE_*` at spawn so activation never propagates to grandchildren. The hook runs before any other `before_agent_start` logic so the read lands after per-session state resets.
+A subagent launcher maps an `activate: "lat"` param to that env var. At the child's first `before_agent_start` the hook sets a **session-persistent** flag — the reminder fires on EVERY turn, not just the first — and persists `{enabled:true}` to a state file (`<agentDir>/lat/<project>/<session>.lat-state.json`, keyed by session file), so resuming the child session keeps the reminder on. The var is deleted on read (one-shot), so it cannot leak into later turns or grandchild spawns; launchers are expected to strip inherited `PI_ACTIVATE_*` at spawn so activation never propagates down the tree. The state loads at `session_start`, with a lazy fallback at the first `before_agent_start`. Deactivation uses the `deactivate:lat` bus event — the optional activator extension (not shipped in this template) wires it to a `/lat off` command; the listener is kept here so the mechanism works wherever the activator is installed.
 
 ### During task execution
 
