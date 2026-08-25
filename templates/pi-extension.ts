@@ -461,6 +461,57 @@ export default async function (pi: ExtensionAPI) {
   let latActivatePending = false;
   let latActivateActive = false;
 
+  // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
+  // Persistent (session-wide) activation: set ONLY by the PI_ACTIVATE_LAT env
+  // var (child subagent `activate` param). Reminder fires on EVERY turn and
+  // the state is persisted per session file — mirror of the advisor's
+  // <agentDir>/advisor/<project>/<session>.advisor-state.json scheme — so a
+  // resume of the same session file keeps it. /lat <prompt> stays per-turn;
+  // /lat off (deactivate:lat, emitted by the activator extension) is the only
+  // escape.
+  let latSessionPersistent = false;
+  let latSessionFile: string | undefined;
+
+  function resolveLatStateFile(sessionFile: string): string {
+    const fsPath = require("node:path") as typeof import("node:path");
+    const fsOs = require("node:os") as typeof import("node:os");
+    const expandUser = (p: string) => {
+      if (p === "~") return fsOs.homedir();
+      if (p.startsWith("~/")) return fsPath.join(fsOs.homedir(), p.slice(2));
+      return p;
+    };
+    const agentDir = process.env.PI_CODING_AGENT_DIR
+      ? expandUser(process.env.PI_CODING_AGENT_DIR)
+      : fsPath.join(fsOs.homedir(), ".pi", "agent");
+    const sessionsDir = fsPath.join(agentDir, "sessions");
+    const rel = fsPath.relative(sessionsDir, sessionFile);
+    if (rel.startsWith("..") || fsPath.isAbsolute(rel)) {
+      return sessionFile.replace(/\.jsonl$/, ".lat-state.json");
+    }
+    return fsPath.join(agentDir, "lat", rel.replace(/\.jsonl$/, ".lat-state.json"));
+  }
+
+  function loadLatEnabled(sessionFile?: string): boolean {
+    if (!sessionFile) return false;
+    const fs = require("node:fs") as typeof import("node:fs");
+    try {
+      return JSON.parse(fs.readFileSync(resolveLatStateFile(sessionFile), "utf8")).enabled === true;
+    } catch {
+      return false;
+    }
+  }
+
+  function saveLatEnabled(enabled: boolean, sessionFile?: string): void {
+    if (!sessionFile) return;
+    const fs = require("node:fs") as typeof import("node:fs");
+    const fsPath = require("node:path") as typeof import("node:path");
+    try {
+      const stateFile = resolveLatStateFile(sessionFile);
+      fs.mkdirSync(fsPath.dirname(stateFile), { recursive: true });
+      fs.writeFileSync(stateFile, JSON.stringify({ enabled }), "utf8");
+    } catch {}
+  }
+
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]]
   // /lat|/full: receive the activation signal from the activator extension
   // (shared event bus). Payload-free channels: only set the pending flag.
@@ -473,15 +524,62 @@ export default async function (pi: ExtensionAPI) {
     latActivatePending = true;
   });
 
-  pi.on("before_agent_start", async () => {
+  // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
+  // /lat off (activator extension): clear the session-persistent reminder +
+  // its state file. Per-turn activations are unaffected (they die with their
+  // turn anyway).
+  pi.events.on("deactivate:lat", () => {
+    latSessionPersistent = false;
+    saveLatEnabled(false, latSessionFile);
+  });
+
+  // Emitted by the handoff extension after an in-place transcript
+  // replacement, which may not fire session_start: default-off the persistent
+  // reminder for the fresh transcript. The old session's state file is
+  // untouched.
+  pi.events.on("pi-amplike:handoff-session-replaced", () => {
+    latSessionPersistent = false;
+  });
+
+  // Resume / handoff: load the persistent state keyed by the CURRENT session
+  // file. A fresh session file has no state file → default-off.
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      const sf = (ctx as any).sessionManager?.getSessionFile?.();
+      if (sf) {
+        latSessionFile = sf;
+        latSessionPersistent = loadLatEnabled(sf);
+      }
+    } catch {}
+  });
+
+  pi.on("before_agent_start", async (_event, ctx) => {
     // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
-    // Env-based activation (child subagent): PI_ACTIVATE_LAT from the parent's
-    // `activate` param. One-shot: delete immediately so it can't leak into a
-    // later turn or a grandchild spawn. Read here (not session_start) so it
-    // lands after any per-session state reset.
+    // Env-based activation (child subagent `activate` param): PI_ACTIVATE_LAT
+    // → SESSION-PERSISTENT reminder (every turn, persisted to the state file
+    // so a resume stays on; /lat off escapes). One-shot: delete immediately
+    // so it can't leak into a grandchild spawn.
     if (process.env.PI_ACTIVATE_LAT === "1") {
-      latActivatePending = true;
+      latSessionPersistent = true;
+      try {
+        const sf = (ctx as any)?.sessionManager?.getSessionFile?.() ?? latSessionFile;
+        if (sf) {
+          latSessionFile = sf;
+          saveLatEnabled(true, sf);
+        }
+      } catch {}
       delete process.env.PI_ACTIVATE_LAT;
+    }
+    // Resume fallback: if session_start never fired (first session of the
+    // process in some modes), resolve + load the persisted state on this turn.
+    if (!latSessionFile) {
+      try {
+        const sf = (ctx as any)?.sessionManager?.getSessionFile?.();
+        if (sf) {
+          latSessionFile = sf;
+          latSessionPersistent = loadLatEnabled(sf);
+        }
+      } catch {}
     }
     agentEndFired = false;
     latCheckInProgress = false;
@@ -492,7 +590,8 @@ export default async function (pi: ExtensionAPI) {
     // /lat turn can't leak into this one. Reminder is off by default.
     latActivateActive = latActivatePending;
     latActivatePending = false;
-    if (!latActivateActive) return; // Reminder only on /lat|/full turns (default OFF)
+    // Reminder on /lat|/full turns, or every turn when env-activated (default OFF).
+    if (!latActivateActive && !latSessionPersistent) return;
 
     const reminder = [
       "Before starting work, run `lat_search` with one or more queries describing the user's intent.",
