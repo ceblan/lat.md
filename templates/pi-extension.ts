@@ -391,6 +391,7 @@ export default async function (pi: ExtensionAPI) {
   // definition. If a list is given, the FIRST entry is used. Returns null
   // when the field is absent/unparseable, in which case --model is omitted
   // and pi falls back to its default model resolution.
+  // Background validation + model resolution for the spawned documentator.
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#After task completion ()]]
   function readDocumentatorModel(): string | null {
     const fs = require("node:fs") as typeof import("node:fs");
@@ -444,7 +445,12 @@ export default async function (pi: ExtensionAPI) {
       return null;
     }
   }
-  const documentatorModel = readDocumentatorModel();
+  // documentatorModel is read fresh at each invocation (see the --lat-sync
+  // flag handler and the /lat-sync slash command) so `agent-power` profile
+  // switches take effect without reloading the extension. A module-level
+  // cache previously held a stale --model value: switching profiles mid-
+  // session rewrote documentator.md, but the running session still passed
+  // the old model to spawned documentator subprocesses.
 
   // Guards para prevenir infinite loops:
   // - agentEndFired: prevents agent_end from firing twice per prompt
@@ -463,12 +469,11 @@ export default async function (pi: ExtensionAPI) {
 
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
   // Persistent (session-wide) activation: set ONLY by the PI_ACTIVATE_LAT env
-  // var (child subagent `activate` param). Reminder fires on EVERY turn and
-  // the state is persisted per session file — mirror of the advisor's
-  // <agentDir>/advisor/<project>/<session>.advisor-state.json scheme — so a
-  // resume of the same session file keeps it. /lat <prompt> stays per-turn;
-  // /lat off (deactivate:lat, emitted by the activator extension) is the only
-  // escape.
+  // var (child subagent `activate` param / handoff-split directive). Reminder
+  // fires on EVERY turn and the state is persisted per session file — mirror
+  // of the advisor's <agentDir>/advisor/<project>/<session>.advisor-state.json
+  // scheme — so a resume of the same session file keeps it. /lat <prompt>
+  // stays per-turn; /lat off (deactivate:lat) is the only escape.
   let latSessionPersistent = false;
   let latSessionFile: string | undefined;
 
@@ -515,8 +520,7 @@ export default async function (pi: ExtensionAPI) {
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Before each task ()]]
   // /lat|/full: receive the activation signal from the activator extension
   // (shared event bus). Payload-free channels: only set the pending flag.
-  // Inert when no activator extension is installed: the events never fire, the
-  // flags stay false, and the reminder stays off.
+  // Inert when no activator extension is installed.
   pi.events.on("activate:lat", () => {
     latActivatePending = true;
   });
@@ -525,18 +529,17 @@ export default async function (pi: ExtensionAPI) {
   });
 
   // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
-  // /lat off (activator extension): clear the session-persistent reminder +
-  // its state file. Per-turn activations are unaffected (they die with their
-  // turn anyway).
+  // /lat off: clear the session-persistent reminder + its state file. Per-turn
+  // activations are unaffected (they die with their turn anyway).
   pi.events.on("deactivate:lat", () => {
     latSessionPersistent = false;
     saveLatEnabled(false, latSessionFile);
   });
 
-  // Emitted by the handoff extension after an in-place transcript
-  // replacement, which may not fire session_start: default-off the persistent
-  // reminder for the fresh transcript. The old session's state file is
-  // untouched.
+  // Emitted by handoff.ts after an in-place transcript replacement, which may
+  // not fire session_start: default-off the persistent reminder for the fresh
+  // transcript. The old session's state file is untouched. Must match
+  // HANDOFF_SESSION_REPLACED_CHANNEL in handoff.ts.
   pi.events.on("pi-amplike:handoff-session-replaced", () => {
     latSessionPersistent = false;
   });
@@ -555,10 +558,10 @@ export default async function (pi: ExtensionAPI) {
 
   pi.on("before_agent_start", async (_event, ctx) => {
     // @lat: [[pi-integration#Pi Integration#Runtime Workflow#Env-based child activation]]
-    // Env-based activation (child subagent `activate` param): PI_ACTIVATE_LAT
-    // → SESSION-PERSISTENT reminder (every turn, persisted to the state file
-    // so a resume stays on; /lat off escapes). One-shot: delete immediately
-    // so it can't leak into a grandchild spawn.
+    // Env-based activation (child subagent `activate` param / handoff-split
+    // directive): PI_ACTIVATE_LAT → SESSION-PERSISTENT reminder (every turn,
+    // persisted to the state file so a resume stays on; /lat off escapes).
+    // One-shot: delete immediately so it can't leak into a grandchild spawn.
     if (process.env.PI_ACTIVATE_LAT === "1") {
       latSessionPersistent = true;
       try {
@@ -671,6 +674,9 @@ export default async function (pi: ExtensionAPI) {
     // documentator agent frontmatter. readDocumentatorModel() extracts the
     // `model:` field from ~/.pi/agent/agents/documentator.md so the subprocess
     // honors the agent definition instead of falling back to pi's default.
+    // Read fresh at invocation: agent-power rewrites documentator.md between
+    // extension loads, so a module-level cache would pass a stale --model.
+    const documentatorModel = readDocumentatorModel();
     const docArgs = ["--mode", "json", "-p", "--no-session"];
     if (documentatorModel) docArgs.push("--model", documentatorModel);
     docArgs.push(documentatorTask);
@@ -1015,6 +1021,10 @@ export default async function (pi: ExtensionAPI) {
       // Honor the model declared in the documentator agent frontmatter
       // (first entry if a list). readDocumentatorModel() returns null when
       // the field is absent, in which case pi uses its default model.
+      // Read fresh at invocation: agent-power rewrites documentator.md
+      // between extension loads, so a module-level cache would pass a stale
+      // --model to the spawned documentator pane.
+      const documentatorModel = readDocumentatorModel();
       if (documentatorModel) commandParts.push("--model", documentatorModel);
       // Do NOT pass --tools — let the documentator use all extension tools
       // (lat_search, lat_check, hindsight_recall, etc.) by default.
@@ -1024,7 +1034,7 @@ export default async function (pi: ExtensionAPI) {
 
       const documentatorPrompt = [
         "Read ~/.pi/agent/agents/documentator.md and execute ALL its instructions directly.",
-        "Do NOT use any subagent or delegation tool. Execute the 4 steps yourself.",
+        "Do NOT use any subagent or delegation tool. Execute all 5 steps yourself (Step 5 refreshes the graphify graph and bridge index).",
         "",
         "End with the JSON status block as specified in documentator.md.",
       ].join("\n");
